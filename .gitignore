@@ -1,0 +1,17 @@
+# Compiled artifacts
+MQL4/Experts/*.ex4
+MQL4/Experts/*.ex5
+MQL4/Logs/
+
+# MT4 runtime files
+MQL4/Files/
+MQL4/Indicators/
+
+# OS/Editor
+*.tmp
+*.swp
+.DS_Store
+.vscode/
+
+# Logs
+shared/
