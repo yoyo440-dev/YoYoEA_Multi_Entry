@@ -285,3 +285,29 @@
 2025-11-09T12:07:07+09:00	アクション: YoYoEA_NEXTモノレポを解体し、YoYoEA_Multi_Entry/YoYoEA_Multi_Entry_ML/YoYoEA_SlopMAの3リポジトリ構成へ移行。結果: 各ディレクトリにREADME/AGENTS/スクリプトを整備し、shared配下へ成果物を集約。次アクション: 各リポの初回コミットとリモート設定をユーザー指示に従って実施。
 2025-11-09T12:11:44+09:00	アクション: YoYoEA_Multi_Entry_MLに追加されたCodex_memoディレクトリを確認。結果: ルート構成に新フォルダを認識、今後のメモ用途として把握。次アクション: ユーザー指示があれば内容整理やREADME反映を検討。
 2025-11-09T12:13:40+09:00	アクション: YoYoEA_Multi_Entry_ML/AGENTS.mdのメモ運用指針をCodex_memoディレクトリ基準に更新。結果: AGENTSでCodex_memo内記録とYoYoEA_Multi_Entry/Memo連携を明文化。次アクション: Codex_memoのテンプレ整備やログ記入が必要なら実施。
+
+2025-11-09 04:24:18 アクション: YoYoEA_Multi_EntryをMLリポジトリに複製し共有StateLoggerユーティリティ導入まで完了。次アクション: YoYoEAログへの環境指標カラム追加とdocs/ETL更新・BT検証を実施。
+
+2025-11-09 04:48:36 アクション: YoYoEA_Multi_Entry_MLのTradeLogに環境指標カラム(env_*)を追加し、StateLogger計測値をENTRY/EXIT両方で出力できるよう改修。次アクション: docs/ETLへ新列仕様を反映しBTログで結合検証を進める。
+
+2025-11-09 04:59:00 アクション: docsにStateLog/TradeLog拡張仕様を追記し、TradeLog(env_*)を変換するETLスクリプトScripts/etl_trade_env.pyを追加。次アクション: 新ETLでBTログをParquet化し、Windows側MetaEditorでinclude配置後に再コンパイルを確認する。
+
+2025-11-09 05:21:25 アクション: TradeLogからENTRY単位データセットを生成するScripts/build_entry_dataset.pyを追加し、BTログをParquet化。StateLog検証用joinトレード補助スクリプトも用意。次アクション: entry_outcomesデータをML実験に流し、必要に応じSignal/StateLog結合ETLを拡張。
+
+2025-11-09 05:29:06 アクション: YoYoEA_Multi_Entry_MLのrun_id生成をStateLoggerと同じBuildAutoRunId(Symbol())に統一。次アクション: 次回BTログでrun_id一致を確認し、過去ログは必要に応じてETLで補正。
+
+2025-11-09 06:19:21 アクション: build_trade_state_dataset.pyでTradeLog/StateLog/TradeParamsを統合し、517行のParquetデータを生成。次アクション: このデータをNotebook等に投入して特徴量検証・SignalLog結合拡張を検討。
+
+2025-11-09 07:40:04 アクション: notebooks/trade_state_analysis.ipynbを作成し、TradeLog/StateLog由来Parquetを読み込む雛形を整備。次アクション: Notebookで統計/可視化/学習セルを追加し結果を共有。
+
+2025-11-09 07:46:04 アクション: NotebookにATRバンド×指標ごとの損益サマリ/ON-OFF差分セルを追加し分析土台を整備。次アクション: Notebookでの可視化・モデル学習を進め推奨Configを導出。
+
+2025-11-09 07:52:08 アクション: NotebookにBand×指標ヒートマップと推奨ON/OFF表を追加し設定判断を容易化。次アクション: 推奨値をAtrBandConfigへ反映するセル/スクリプトを検討。
+
+2025-11-09 07:55:35 アクション: Notebookで推奨ON/OFFをAtrBandConfigに反映し*_recommended.csvを自動出力するセルを追加。次アクション: 出力ファイルでBT再実施し結果を再ETL/Notebookで評価。
+2025-11-09 17:57:35 アクション: ML リポジトリに pip 用 requirements.txt を追加し、README に venv 構築～ipykernel 登録までの手順と NumPy/MATPLOTLIB 衝突回避策を追記。次アクション: 新しい .venv に依存を導入し Notebook で可視化セルが動くか確認。
+2025-11-09 18:25:37 アクション: trade_state_analysis.ipynb とチェックポイントで pandas/Path 定義セルを先頭へ移動し、Notebook 実行順での NameError を解消。次アクション: カーネル再起動後に Run All で全セルを確認。
+2025-11-15T11:39:52+09:00 AGENTS.md内容確認: AGENTS.md の指示を把握。Next: 追加指示待ち。
+2025-11-15T11:41:03+09:00 TradeLog/TradeParams 分析: TradeLog_v124 と TradeParams_v124 から 2025-11-10〜14 の全74トレード、純益+9310、戦略別(RSI+5390/MA_CROSS+3190/CCI+2900/STOCH-2170)、決済理由(Trailing23/BE19/SL15/ManualP10/ManualL7)を整理。TradeParamsはv124プロファイル・ATRバンド外部CSV利用設定を確認。Next: 追加改善指示待ち。
+2025-11-15T11:46:03+09:00 ATRバンド/SL改善提案: TradeLog_v124 の ATR帯別損益と STOP/Manual Loss 分布を再集計し、STOCH(0.08-0.10)停止/0.05-0.08のSL短縮、CCI(0.12-0.20)のSL圧縮、共通SL(TradeParams)の引き下げ案・ATR stop有効化案を整理。Next: 変更内容の確定と検証手順提示。
+2025-11-15T11:57:20+09:00 ATRバンド調整: Config/AtrBandConfig_YoYo_Next_v124_Prod.csv の 0.05-0.08帯( STOCH SL1.8/BE ATR0.8/Trail step0.20 )、0.08-0.10帯(STOCH停止)、0.12-0.20帯(CCI SL2.5/BE ATR2.0/Trail step0.70)へ更新。Next: 変更反映後のバックテスト検証。
