@@ -68,11 +68,35 @@ YoYoEA_Multi_Entry（旧 YoYoEntryTester）は複数ストラテジー（MA、RS
 - ロット縮小ロジック
   - `InpLotReductionEquityThreshold` で指定したエクイティを割ると、固定ロット運用時に `InpLotReductionFactor` を乗じたロットで発注
 - ログ拡張
-  - TradeLog に `atr_entry` / `atr_exit` 列を追加し、ENTRY/EXIT 両方の ATR 状態を記録。ENTRY ログは廃止済み
+- TradeLog に `atr_entry` / `atr_exit` 列を追加し、ENTRY/EXIT 両方の ATR 状態を記録。ENTRY ログは廃止済み
 - 互換性
   - 新パラメータはすべて任意で、既存設定（シングルポジション・固定ロット）のままでも過去バージョンと同じ動作を維持します。
 
 ## 機械学習ベースのConfig最適化
 - 市場状態ログの収集方法、ETL パイプライン、XGBoost による Config 推薦フローを `docs/ml_config_pipeline.md` にまとめています。
 - 特徴量カテゴリ（市場状態／EA状態／Configメタデータ）や、StateLogger EA・SignalLog 拡張の仕様も同ファイルを参照してください。
+
+## 今後の仕様拡張: ADX+Donchian フィルタ
+
+### 目標仕様
+- ATR バンド設定にトレンド強弱（ADX）を取り込む。
+  - Config CSV に `ADX_STATE` 列を追加し、ATR 帯ごとに `HIGH` (トレンド) / `LOW` (レンジ) の 2 設定を用意。
+  - EA はエントリー時に `entryAdxValue` を取得し、ATR 帯と ADX_STATE が一致する行のみ適用。
+- Donchian 幅（narrow/mid/wide/ultra）も条件に使えるようにし、帯域によってストラテジーの有効/無効や SL/BE/Trail 値を切り替え。
+- TradeLog に `adx_entry` や Donchian 幅などの列を追加して分析と連携。
+
+### 実装計画
+1. **設定構造の拡張**
+   - `AtrBandConfig` のヘッダに `ADX_STATE` と必要なら `DONCHIAN_STATE` を追加。後方互換のため未記入時は `LOW` / `ANY` と扱う。
+   - `StrategyBandSetting` に `adxState` / `donchianState` を追加し、既存の SL/TP/BE/Trail と併せて保持。
+2. **ADX 判定ロジック**
+   - `ResolveBandSetting()` へ `entryAdxValue` を渡し、行の `adxState` と `InpAdxThresholdHigh` を基に採用可否を決定。
+   - ADX 閾値 (`InpAdxPeriod`, `InpAdxThresholdHigh`) を extern パラメータとして追加。
+3. **Donchian 幅判定**
+   - ATR ゾーン確定後に `donchian_width` 用の関数を呼び、CSV の `DONCHIAN_STATE` が `NARROW` / `WIDE` などで指定されていればフィルタ。
+4. **ログ／メタデータ拡張**
+   - `TradeMetadata` と `TradeLog` に ADX / Donchian 情報を保持し、後段の Notebook 解析と一致させる。
+5. **テスト計画**
+   - 旧 Config でも動作することを確認したうえで、新しい ADX_STATE を使った設定ファイルを生成。
+   - バックテストログを Notebook で集計し、ATR×ADX フィルタ適用の効果を検証。
 
