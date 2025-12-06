@@ -6,7 +6,7 @@
 input string InpProfileName     = "Default";
 input double InpLots            = 0.10;
 input int    InpStopLossPips    = 50;
-input int    InpTakeProfitPips  = 50;
+input int    InpTakeProfitPips  = 100;
 input int    InpSlippage        = 3;
 
 input bool   InpEnableMA        = true;
@@ -24,9 +24,9 @@ input int    InpAdxPeriod       = 14;
 input double InpAdxTrendThreshold = 25.0;
 input bool   InpUseDonchianFilter = false;
 input int    InpDonchianPeriod    = 20;
-input double InpDonchianNarrowMax = 0.150;
-input double InpDonchianMidMax    = 0.250;
-input double InpDonchianWideMax   = 0.400;
+input double InpDonchianNarrowMax = 0.250;
+input double InpDonchianMidMax    = 1.000;
+input double InpDonchianWideMax   = 1.000;
 
 //--- indicator parameters (fixed as per requirements, exposed for fine tuning if needed)
 input int    InpFastMAPeriod    = 14;
@@ -65,14 +65,14 @@ input int    InpSessionEndHour         = 24;
 input bool   InpSessionSkipFriday      = false;
 input int    InpFridayCutoffHour       = 21;
 input bool   InpEnableBreakEven        = true;
-input double InpBreakEvenAtrTrigger    = 1.6;
+input double InpBreakEvenAtrTrigger    = 2.0;
 input int    InpBreakEvenOffsetPips    = 3;
-input bool   InpEnableAtrTrailing      = true;
+input bool   InpEnableAtrTrailing      = false;
 input double InpTrailingAtrTrigger     = 2.2;
 input double InpTrailingAtrStep        = 1.0;
 input int    InpTrailingMinStepPips    = 2;
-input bool   InpEnableGlobalMultiPositions = false;
-input int    InpMaxTotalPositions          = 0;
+input bool   InpEnableGlobalMultiPositions = true;
+input int    InpMaxTotalPositions          = 5;
 input int    InpMaxPositionsPerStrategy = 1;
 input double InpMultiPositionEquityThreshold = 0.0;
 input double InpLotReductionEquityThreshold  = 0.0;
@@ -913,13 +913,12 @@ DonchianBandState DetermineDonchianState(const double width)
    if(width <= 0.0)
       return(DONCHIAN_STATE_NARROW);
 
+   // 2段階(low/high)に寄せた閾値設定: NarrowMaxで分岐、それ以上はhigh扱い
    if(width < InpDonchianNarrowMax)
       return(DONCHIAN_STATE_NARROW);
-   if(width < InpDonchianMidMax)
-      return(DONCHIAN_STATE_MID);
-   if(width < InpDonchianWideMax)
-      return(DONCHIAN_STATE_WIDE);
-   return(DONCHIAN_STATE_ULTRA);
+
+   // mid/wide/ultraをまとめてhigh扱い
+   return(DONCHIAN_STATE_WIDE);
   }
 
 double CalculateDonchianWidthForShift(const int period, const int shift)
