@@ -3078,6 +3078,8 @@ string DetermineExitReason(const int ticket,
    int metaIndex = FindTradeMetadataIndex(ticket);
    int beOffsetPips = InpBreakEvenOffsetPips;
    StopUpdateReason lastStopReason = STOP_UPDATE_INITIAL;
+   double breakEvenStop = 0.0;
+   bool   hasBreakEvenStop = false;
    if(metaIndex >= 0)
      {
       TradeMetadata meta = g_tradeMetadata[metaIndex];
@@ -3085,25 +3087,28 @@ string DetermineExitReason(const int ticket,
       if(meta.breakEvenOffsetPips >= 0)
          beOffsetPips = meta.breakEvenOffsetPips;
      }
+   if(pip > 0.0)
+     {
+      breakEvenStop = (direction > 0
+                       ? openPrice + beOffsetPips * pip
+                       : openPrice - beOffsetPips * pip);
+      hasBreakEvenStop = true;
+     }
+
+   bool stopAtBreakEven = (hasBreakEvenStop && hasSl &&
+                           MathAbs(stopLoss - breakEvenStop) <= tolerance + 1e-8);
 
    if(hitSl)
      {
-      if(lastStopReason == STOP_UPDATE_BREAK_EVEN)
-         return("STOP_BREAKEVEN");
       if(lastStopReason == STOP_UPDATE_TRAILING)
          return("STOP_TRAILING");
 
-      if(pip > 0.0)
-        {
-         double breakEvenStop = (direction > 0
-                                 ? openPrice + beOffsetPips * pip
-                                 : openPrice - beOffsetPips * pip);
-         bool breachedBreakEven = (direction > 0
-                                   ? closePrice <= breakEvenStop + tolerance + 1e-8
-                                   : closePrice >= breakEvenStop - tolerance - 1e-8);
-         if(breachedBreakEven)
-            return("STOP_BREAKEVEN");
-        }
+      if(stopAtBreakEven)
+         return("STOP_BREAKEVEN");
+
+      if(lastStopReason == STOP_UPDATE_BREAK_EVEN && hasBreakEvenStop)
+         return("STOP_BREAKEVEN");
+
       return("STOP_LOSS");
      }
 
