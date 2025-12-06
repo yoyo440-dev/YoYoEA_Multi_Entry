@@ -352,3 +352,23 @@
 2025-11-16T22:20:56+09:00 アクション: ATR帯×戦略×EXIT理由の解析セルを追加し、ピボット表示も実装。結果: exit_summary/exit_pivotでEXIT種別の件数・損益・平均を容易に確認可能。次アクション: 必要に応じて別フォーマットへのエクスポートや可視化対応を検討。
 2025-11-16T22:26:15+09:00 アクション: TradeLog_v125_AtrBandConfig_YoYoEA_Multi_Entry_Test_All.csv.csvのexit_reason列を確認。結果: STOP_LOSS/BREAKEVEN/TRAiLING/TAKE_PROFITなどの値が存在しENTRY行のみNaN。次アクション: entry_exit生成時にEXIT側の理由列をマージするか検討。
 2025-11-16T22:30:06+09:00 アクション: build_entry_exitでexit_reason列をBTログからマージしNotebookを再構成。結果: TradeLogのEXIT理由（SL/TP/Trail等）がentry_exitに反映され、EXIT理由集計セルでUNKNOWN以外が表示。次アクション: 必要なら旧ログにも適用可否確認。
+2025-11-18T16:21:28+09:00 アクション: state_bt_analysisノートの解析機能を改善（設定セル追加、build_entry_exit互換性復元、サンプル出力簡素化、Donchian集計の耐性向上）。結果: 旧ログにも対応しEXIT理由サマリが即活用可能、ノート出力も軽量化。次アクション: 必要なら他ノートやstate_bt_analysis.pyへの反映検討。
+2025-11-18T16:30:27+09:00 アクション: 戦略別のATR×ADX/Donchian集計セルを追加し、display/Markdownで各指標の結果を確認可能に。結果: 各戦略別に帯域×指標条件の損益・件数を即座に比較できる解析フローが完成。次アクション: 必要なら可視化やCSVエクスポート拡張を検討。
+2025-11-18T16:39:12+09:00 アクション: build_entry_exitでdonchian_widthをEXIT列から統合するよう修正し、戦略別Donchian表の行ベクトルも追加。結果: EXITログに存在するDonchian幅が解析に反映され、戦略別のATR×Donchian平均を比較可能に。次アクション: 必要なら警告を避けるためfillnaの型指定整備を検討。
+2025-11-18T16:46:38+09:00 アクション: Donchian幅をEXIT列から統合し、戦略別ATR×(ADX×Donchian)サマリを追加。結果: 各ATR帯ごとにADX×Donchian複数行の平均損益を表示でき、指標毎のコンビネーション分析が容易に。次アクション: 行ベクトル出力のCSV化や可視化の検討。
+2025-11-18T17:18:34+09:00 アクション: state_bt_analysisノートに別名保存セルを追加し、BTログ名付きipynbへ上書き保存できるように対応。結果: bt_pathのstemを使用してanalysis/notebooks配下にstate_bt_analysis_<ログ名>.ipynbを生成。次アクション: 必要に応じて自動実行時の出力クリア手順を整備。
+2025-11-18T17:37:10+09:00 アクション: ノートの戦略別ATR×ADX/Donchian/複合集計セルを削除し軽量化。結果: state_bt_analysis.ipynbが最小限の集計セットに戻り、保存セルも正常動作を確認。次アクション: 必要に応じて別ノートで詳細分析を管理。
+2025-11-23T10:28:35+09:00 アクション: GetCurrentTotalPositionLimitのデフォルト制限を1に戻し、マルチ無効時も単一ポジ上限を維持。結果: g_multiPositionActive=falseや上限未設定時でも総ポジ制限が有効(>0)となり無制限エントリを防止。次アクション: EAコンパイルと必要ならBTで挙動確認。
+2025-11-23T10:30:00+09:00 アクション: compile_YoYoEA_Multi_Entry.ps1でEAコンパイルを試行。結果: D:/Rakuten_MT4へのアクセス権限不足でCopy-Itemが失敗しコンパイル未実施。次アクション: Windows側パスへの書き込み許可を確認するか、ローカルで手動コンパイル/BTを実行。
+2025-11-23T11:00:57+09:00 アクション: Windows側D:/Rakuten_MT4のYoYoEA_Multi_Entry.mq4を確認しリポジトリ版とdiff比較。結果: GetCurrentTotalPositionLimit修正を含め内容一致を確認。次アクション: 必要なら再コンパイル/BT実行。
+2025-11-23T11:02:28+09:00 アクション: EA再レビューのためGetCurrentTotalPositionLimit周辺とエントリー判定部(totalLimitチェック)を確認。結果: g_multiPositionActive=falseまたは上限<=0で1を返し単一ポジ制限が有効、エントリー前にtotalLimit>0かつ件数>=limitでSKIPするため期待挙動に一致。追加の不具合は現時点で未発見。次アクション: コンパイル/BT権限が整い次第、単一ポジ上限が効くかテスト実行を推奨。
+2025-11-23T12:11:26+09:00 アクション: state_bt_analysis.ipynbをレビューし集計ロジックを確認。結果: (1) ATR×ADX集計がenv側adx14前提でbtのadx_entryを無視しうる点、(2) 全体DD算出でtimestampソートが保証されずログ順に依存する点を発見。次アクション: adx_entry優先/フォールバックの追加とDD計算前のtimestamp昇順ソートを検討。
+2025-11-23T12:13:10+09:00 アクション: state_bt_analysis.ipynbを修正。結果: (1) ATR×ADX集計でadx_entry優先/フォールバックを追加し、adx_valueに統一して欠損ドロップ、(2) 全体指標サマリでtimestamp昇順ソートを挿入し最大DD計算の時系列整合性を確保。次アクション: ノートを実行し集計が期待通りか確認。
+2025-11-23T12:17:41+09:00 アクション: state_bt_analysis.ipynbにATR帯×期間ばらつきサマリセルを追加し、exit_timestamp等から月次periodでPF/勝率/期待値の分位点を計算するよう対応。結果: ATR帯ごとに期間別集計(period_stats)と分位点(band_quantiles)で安定性確認が可能に。次アクション: ノート実行で新セルの出力を確認し、必要なら期間粒度(日次/週次)へ拡張。
+2025-11-23T12:23:49+09:00 アクション: state_bt_analysis.ipynbにATR帯×期間ばらつき(戦略別)セルを追加。結果: ATR帯×strategy×月次でPF/勝率/期待値の分位点を計算し、ばらつき確認が可能に。次アクション: ノート実行で新セルの出力を確認。
+2025-11-23T12:39:19+09:00 アクション: ML向けパラメータ探索ノート state_bt_ml_opt.ipynb を新規作成。結果: BTログ読み込み/指標算出、SL/TP/BE/Trailing候補生成(グリッド+ランダム)、candidate_id抽出と集計、簡易スコアリング、scikit-optimize有無でBO提案、推奨パラメータCSV出力の流れを整備。次アクション: ノート実行で推薦CSVを生成し、候補IDを付けてBT再実行→スコア確認。
+2025-11-23T12:46:56+09:00 アクション: Config/v125_AtrBandConfig_YoYoEA_Multi_Entry_Test_All_CCI_Fix_MA_Fix_RSI_Fix_Sto3.csv を確認し、指標別SL/TP/BE/トレール設定の列構成を確認。結果: MA/RSI/CCI/MACD/STOCHごとにON/OFF・Mode・SL/TP・BE(ATR/Offset)・Trail(ATR/Step/Min)列があり、ATR帯×ADX_STATE×DONCHIAN_STATEごとに個別設定可能な構成を把握。次アクション: 必要に応じて各帯域/指標の値を調整し、AtrBandConfigとして反映。
+2025-11-23T12:51:19+09:00 アクション: state_bt_ml_opt.ipynbにAtrBandConfig書き出しセルを追加。結果: recommended_params.csvの推奨値を指標ごと(MA/RSI/CCI/MACD/STOCH)にSL/TP/BE/Trailへ反映し、ベースConfigをコピーして*_from_ml.csvを出力する処理を追加。次アクション: ノート実行でconfig生成し、BTに適用して検証。
+2025-12-06T15:05:09+09:00 アクション: AGENTS.mdを確認し運用ルールを再確認。結果: 会話・ログ・ビルド手順などの指示を把握。次アクション: 指示に従って作業対応。
+2025-12-06T15:08:47+09:00 アクション: EAコードをレビューしリスク箇所を洗い出し。結果: Bars<200でOnTickが全処理をスキップするため起動直後のポジション管理/ログが止まる点、SL約定時に価格乖離があるとEXIT理由がMANUAL扱いになる点を確認。次アクション: ユーザーへ報告し修正方針を相談。
+2025-12-06T15:12:39+09:00 アクション: OnTickのバー不足ガードを整理し、ポジション管理とEXITログが常時動くよう修正。EXIT理由判定の許容誤差を拡大し、トレーリング/BE更新記録を優先してSTOP_TRAILING/STOP_BREAKEVEN分類するよう改善。結果: 起動直後でもストップ更新と履歴ログが停止せず、SLヒット時の価格乖離でも停止理由が正しく記録される。次アクション: コンパイルとBTで挙動確認。

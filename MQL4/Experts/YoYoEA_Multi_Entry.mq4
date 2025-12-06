@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.24"
+#property version   "1.25"
 #property description "Entry evaluation EA for MA, RSI, CCI, and MACD strategies."
 
 //--- input parameters
@@ -19,6 +19,14 @@ input bool   InpUseAtrBandConfig = false;
 input string InpAtrBandConfigFile = "";
 
 input int    InpATRPeriod       = 14;
+input bool   InpUseAdxFilter    = false;
+input int    InpAdxPeriod       = 14;
+input double InpAdxTrendThreshold = 25.0;
+input bool   InpUseDonchianFilter = false;
+input int    InpDonchianPeriod    = 20;
+input double InpDonchianNarrowMax = 0.150;
+input double InpDonchianMidMax    = 0.250;
+input double InpDonchianWideMax   = 0.400;
 
 //--- indicator parameters (fixed as per requirements, exposed for fine tuning if needed)
 input int    InpFastMAPeriod    = 14;
@@ -69,7 +77,7 @@ input int    InpMaxPositionsPerStrategy = 1;
 input double InpMultiPositionEquityThreshold = 0.0;
 input double InpLotReductionEquityThreshold  = 0.0;
 input double InpLotReductionFactor           = 1.0;
-input int    InpMagicPrefix                 = 10100;
+input int    InpMagicPrefix                 = 20100;
 
 //--- strategy meta definitions
 enum StrategyIndex
@@ -107,7 +115,7 @@ int           g_totalPositionCap     = 1;
 bool          g_multiPositionActive  = false;
 double        g_effectiveLots        = 0.0;
 
-#define RESULT_LOG_COLUMNS 19
+#define RESULT_LOG_COLUMNS 21
 
 enum StopUpdateReason
   {
@@ -122,6 +130,8 @@ struct TradeMetadata
    int    ticket;
    double entryPrice;
    double entryAtr;
+   double entryAdx;
+   double entryDonchianWidth;
    double stopLoss;
    double takeProfit;
    int    direction;
@@ -171,10 +181,28 @@ struct StrategyBandSetting
    int      trailingMinStepPips;
   };
 
+enum AdxBandState
+  {
+   ADX_STATE_ANY = 0,
+   ADX_STATE_LOW,
+   ADX_STATE_HIGH
+  };
+
+enum DonchianBandState
+  {
+   DONCHIAN_STATE_ANY = 0,
+   DONCHIAN_STATE_NARROW,
+   DONCHIAN_STATE_MID,
+   DONCHIAN_STATE_WIDE,
+   DONCHIAN_STATE_ULTRA
+  };
+
 struct BandConfig
   {
    double minAtr;
    double maxAtr;
+   AdxBandState      adxState;
+   DonchianBandState donchianState;
    StrategyBandSetting strategySettings[STRAT_TOTAL];
   };
 
@@ -777,6 +805,8 @@ void InitBandConfig(BandConfig &config)
   {
    config.minAtr = 0.0;
    config.maxAtr = DBL_MAX;
+   config.adxState = ADX_STATE_ANY;
+   config.donchianState = DONCHIAN_STATE_ANY;
    for(int i = 0; i < STRAT_TOTAL; i++)
       InitStrategyBandSetting(config.strategySettings[i]);
   }
@@ -823,6 +853,109 @@ bool ParseDoubleValue(const string text, double &value)
 
    value = StrToDouble(trimmed);
    return(true);
+  }
+
+AdxBandState ParseAdxStateText(const string text)
+  {
+   string trimmed = ToUpper(TrimString(text));
+   if(StringLen(trimmed) == 0)
+      return(ADX_STATE_ANY);
+
+   if(trimmed == "HIGH" || trimmed == "TREND")
+      return(ADX_STATE_HIGH);
+
+   if(trimmed == "LOW" || trimmed == "RANGE")
+      return(ADX_STATE_LOW);
+
+   return(ADX_STATE_ANY);
+  }
+
+DonchianBandState ParseDonchianStateText(const string text)
+  {
+   string trimmed = ToUpper(TrimString(text));
+   if(StringLen(trimmed) == 0)
+      return(DONCHIAN_STATE_ANY);
+
+   if(trimmed == "NARROW")
+      return(DONCHIAN_STATE_NARROW);
+   if(trimmed == "MID" || trimmed == "MEDIUM")
+      return(DONCHIAN_STATE_MID);
+   if(trimmed == "WIDE")
+      return(DONCHIAN_STATE_WIDE);
+   if(trimmed == "ULTRA")
+      return(DONCHIAN_STATE_ULTRA);
+
+   return(DONCHIAN_STATE_ANY);
+  }
+
+AdxBandState DetermineAdxState(const double adxValue)
+  {
+   if(!InpUseAdxFilter)
+      return(ADX_STATE_ANY);
+
+   if(adxValue == EMPTY_VALUE)
+      return(ADX_STATE_ANY);
+
+   if(adxValue >= InpAdxTrendThreshold)
+      return(ADX_STATE_HIGH);
+
+   return(ADX_STATE_LOW);
+  }
+
+DonchianBandState DetermineDonchianState(const double width)
+  {
+   if(!InpUseDonchianFilter)
+      return(DONCHIAN_STATE_ANY);
+
+   if(width == EMPTY_VALUE)
+      return(DONCHIAN_STATE_ANY);
+
+   if(width <= 0.0)
+      return(DONCHIAN_STATE_NARROW);
+
+   if(width < InpDonchianNarrowMax)
+      return(DONCHIAN_STATE_NARROW);
+   if(width < InpDonchianMidMax)
+      return(DONCHIAN_STATE_MID);
+   if(width < InpDonchianWideMax)
+      return(DONCHIAN_STATE_WIDE);
+   return(DONCHIAN_STATE_ULTRA);
+  }
+
+double CalculateDonchianWidthForShift(const int period, const int shift)
+  {
+   if(period <= 0)
+      return(EMPTY_VALUE);
+
+   if(Bars <= shift)
+      return(EMPTY_VALUE);
+
+   int availableBars = Bars - shift;
+   if(availableBars <= 0)
+      return(EMPTY_VALUE);
+
+   int lookback = period;
+   if(lookback > availableBars)
+      lookback = availableBars;
+   if(lookback <= 0)
+      return(EMPTY_VALUE);
+
+   int highestShift = iHighest(NULL, 0, MODE_HIGH, lookback, shift);
+   int lowestShift  = iLowest(NULL, 0, MODE_LOW, lookback, shift);
+   if(highestShift < 0 || lowestShift < 0)
+      return(EMPTY_VALUE);
+
+   double highest = High[highestShift];
+   double lowest  = Low[lowestShift];
+   double width   = highest - lowest;
+   if(width < 0.0)
+      width = 0.0;
+   return(width);
+  }
+
+double CalculateDonchianWidth(const int period)
+  {
+   return(CalculateDonchianWidthForShift(period, 1));
   }
 
 //+------------------------------------------------------------------+
@@ -957,9 +1090,41 @@ string StopModeToText(const StopMode mode)
          return("ATR");
       case STOP_MODE_PIPS:
          return("PIPS");
-      case STOP_MODE_GLOBAL:
+     case STOP_MODE_GLOBAL:
+     default:
+        return("GLOBAL");
+     }
+  }
+
+string AdxStateToText(const AdxBandState state)
+  {
+   switch(state)
+     {
+      case ADX_STATE_HIGH:
+         return("HIGH");
+      case ADX_STATE_LOW:
+         return("LOW");
+      case ADX_STATE_ANY:
       default:
-         return("GLOBAL");
+         return("ANY");
+     }
+  }
+
+string DonchianStateToText(const DonchianBandState state)
+  {
+   switch(state)
+     {
+      case DONCHIAN_STATE_NARROW:
+         return("NARROW");
+      case DONCHIAN_STATE_MID:
+         return("MID");
+      case DONCHIAN_STATE_WIDE:
+         return("WIDE");
+      case DONCHIAN_STATE_ULTRA:
+         return("ULTRA");
+      case DONCHIAN_STATE_ANY:
+      default:
+         return("ANY");
      }
   }
 
@@ -1028,10 +1193,12 @@ void LogBandConfigurations()
       string maxAtrText = (band.maxAtr == DBL_MAX
                            ? "infinity"
                            : DoubleToString(band.maxAtr, 6));
-      PrintFormat("Band[%d]: minAtr=%s maxAtr=%s",
+      PrintFormat("Band[%d]: minAtr=%s maxAtr=%s adxState=%s donchianState=%s",
                   i,
                   DoubleToString(band.minAtr, 6),
-                  maxAtrText);
+                  maxAtrText,
+                  AdxStateToText(band.adxState),
+                  DonchianStateToText(band.donchianState));
 
       string bandLabel = "Band[" + IntegerToString(i) + "]";
       for(int strat = 0; strat < STRAT_TOTAL; strat++)
@@ -1558,6 +1725,8 @@ bool LoadAtrBandConfig(const string safeProfile)
   const int columnsPerStrategy = 11;
   int strategyColumnIndex[];
   ArrayResize(strategyColumnIndex, STRAT_TOTAL * columnsPerStrategy);
+  int adxStateColumnIndex      = -1;
+  int donchianStateColumnIndex = -1;
   for(int strat = 0; strat < STRAT_TOTAL; strat++)
     {
      for(int offset = 0; offset < columnsPerStrategy; offset++)
@@ -1607,6 +1776,16 @@ bool LoadAtrBandConfig(const string safeProfile)
             for(int col = 0; col < columnCount; col++)
               {
                string header = StripUtf8Bom(TrimString(columns[col]));
+               if(EqualsIgnoreCase(header, "ADX_STATE"))
+                 {
+                  adxStateColumnIndex = col;
+                  continue;
+                 }
+               if(EqualsIgnoreCase(header, "DONCHIAN_STATE"))
+                 {
+                  donchianStateColumnIndex = col;
+                  continue;
+                 }
                for(int strat = 0; strat < STRAT_TOTAL; strat++)
                  {
                   string prefix = g_strategyCsvPrefixes[strat];
@@ -1691,6 +1870,16 @@ bool LoadAtrBandConfig(const string safeProfile)
 
       bool   rowValid      = true;
       string rowErrorCause = "";
+
+      string adxStateText = "";
+      if(adxStateColumnIndex >= 0 && adxStateColumnIndex < columnCount)
+         adxStateText = StripUtf8Bom(TrimString(columns[adxStateColumnIndex]));
+      tempConfig.adxState = ParseAdxStateText(adxStateText);
+
+      string donchianStateText = "";
+      if(donchianStateColumnIndex >= 0 && donchianStateColumnIndex < columnCount)
+         donchianStateText = StripUtf8Bom(TrimString(columns[donchianStateColumnIndex]));
+      tempConfig.donchianState = ParseDonchianStateText(donchianStateText);
 
       for(int strat = 0; strat < STRAT_TOTAL; strat++)
         {
@@ -1812,6 +2001,8 @@ bool LoadAtrBandConfig(const string safeProfile)
 //+------------------------------------------------------------------+
 bool ResolveBandSetting(StrategyIndex index,
                         const double atrValue,
+                        const AdxBandState currentAdxState,
+                        const DonchianBandState currentDonchianState,
                         StrategyBandSetting &outSetting)
   {
    if(!g_bandConfigLoaded || atrValue <= 0.0)
@@ -1825,6 +2016,18 @@ bool ResolveBandSetting(StrategyIndex index,
       bool inRange = (atrValue >= band.minAtr &&
                       (maxAtr == DBL_MAX ? true : atrValue < maxAtr));
       if(!inRange)
+         continue;
+
+      bool adxMatches = (band.adxState == ADX_STATE_ANY ||
+                         currentAdxState == ADX_STATE_ANY ||
+                         band.adxState == currentAdxState);
+      if(!adxMatches)
+         continue;
+
+      bool donchianMatches = (band.donchianState == DONCHIAN_STATE_ANY ||
+                              currentDonchianState == DONCHIAN_STATE_ANY ||
+                              band.donchianState == currentDonchianState);
+      if(!donchianMatches)
          continue;
 
       StrategyBandSetting setting = band.strategySettings[index];
@@ -1869,6 +2072,8 @@ int FindTradeMetadataIndex(const int ticket)
 void RegisterTradeMetadata(const int ticket,
                            const int direction,
                            const double entryAtrValue,
+                           const double entryAdxValue,
+                           const double entryDonchianWidth,
                            const bool breakEvenEnabled,
                            const double breakEvenAtrTrigger,
                            const int breakEvenOffsetPips,
@@ -1884,6 +2089,8 @@ void RegisterTradeMetadata(const int ticket,
    meta.ticket        = ticket;
    meta.entryPrice    = OrderOpenPrice();
    meta.entryAtr      = entryAtrValue;
+   meta.entryAdx      = entryAdxValue;
+   meta.entryDonchianWidth = entryDonchianWidth;
    meta.stopLoss      = OrderStopLoss();
    meta.takeProfit    = OrderTakeProfit();
    meta.direction     = direction;
@@ -1974,6 +2181,8 @@ void InitialiseTradeMetadata()
       int    trailingMinStep     = InpTrailingMinStepPips;
 
       double entryAtrValue = fallbackAtrValue;
+      double entryAdxValue = EMPTY_VALUE;
+      double entryDonchianWidth = EMPTY_VALUE;
       datetime openTime = OrderOpenTime();
       int openShift = iBarShift(NULL, 0, openTime, false);
       if(openShift >= 0)
@@ -1986,6 +2195,20 @@ void InitialiseTradeMetadata()
          double historicalAtr = iATR(NULL, 0, InpATRPeriod, atrShift);
          if(historicalAtr > 0.0)
             entryAtrValue = historicalAtr;
+
+         if(InpUseAdxFilter)
+           {
+            double historicalAdx = iADX(NULL, 0, InpAdxPeriod, PRICE_CLOSE, MODE_MAIN, atrShift);
+            if(historicalAdx > 0.0)
+               entryAdxValue = historicalAdx;
+           }
+
+         if(InpUseDonchianFilter)
+           {
+            double historicalWidth = CalculateDonchianWidthForShift(InpDonchianPeriod, atrShift);
+            if(historicalWidth > 0.0)
+               entryDonchianWidth = historicalWidth;
+           }
         }
       if(entryAtrValue <= 0.0 && fallbackAtrValue > 0.0)
          entryAtrValue = fallbackAtrValue;
@@ -1994,7 +2217,13 @@ void InitialiseTradeMetadata()
         {
          StrategyBandSetting bandSetting;
          InitStrategyBandSetting(bandSetting);
-         if(ResolveBandSetting((StrategyIndex)stratIndex, entryAtrValue, bandSetting))
+        AdxBandState entryAdxState = DetermineAdxState(entryAdxValue);
+        DonchianBandState entryDonchianState = DetermineDonchianState(entryDonchianWidth);
+        if(ResolveBandSetting((StrategyIndex)stratIndex,
+                              entryAtrValue,
+                              entryAdxState,
+                              entryDonchianState,
+                              bandSetting))
            {
             if(bandSetting.breakEvenEnabledSpecified)
                breakEvenEnabled = bandSetting.breakEvenEnabled;
@@ -2019,6 +2248,8 @@ void InitialiseTradeMetadata()
       RegisterTradeMetadata(OrderTicket(),
                             direction,
                             entryAtrValue,
+                            entryAdxValue,
+                            entryDonchianWidth,
                             breakEvenEnabled,
                             breakEvenAtrTrigger,
                             breakEvenOffset,
@@ -2068,7 +2299,9 @@ bool EnsureResultLogHeader()
                 "commission",
                 "net",
                 "pips",
-                "exit_reason");
+                "exit_reason",
+                "adx_entry",
+                "donchian_width");
       FileClose(handle);
       return(true);
      }
@@ -2094,7 +2327,9 @@ bool EnsureResultLogHeader()
                 "commission",
                 "net",
                 "pips",
-                "exit_reason");
+                "exit_reason",
+                "adx_entry",
+                "donchian_width");
      }
    FileClose(handle);
    return(true);
@@ -2249,6 +2484,8 @@ void LogTradeEvent(const StrategyState &state,
                    const double commissionValue,
                    const double netProfit,
                    const double pipsValue,
+                   const double entryAdxValue,
+                   const double entryDonchianWidth,
                    const datetime eventTime,
                    const string exitReason)
   {
@@ -2283,6 +2520,8 @@ void LogTradeEvent(const StrategyState &state,
    int    volumeDigits   = StepToDigits(lotStep);
    string volumeText     = (volume == EMPTY_VALUE ? "" : DoubleToString(volume, volumeDigits));
    string reasonText     = exitReason;
+   string adxText        = (entryAdxValue == EMPTY_VALUE ? "" : DoubleToString(entryAdxValue, 6));
+   string donchianText   = (entryDonchianWidth == EMPTY_VALUE ? "" : DoubleToString(entryDonchianWidth, 6));
 
    FileWrite(handle,
              TimeToString(eventTime, TIME_DATE | TIME_SECONDS),
@@ -2303,7 +2542,9 @@ void LogTradeEvent(const StrategyState &state,
              commissionText,
              netText,
              pipsText,
-             reasonText);
+             reasonText,
+             adxText,
+             donchianText);
 
    FileClose(handle);
   }
@@ -2316,7 +2557,9 @@ TradeAttemptResult ExecuteEntry(const StrategyState &state,
                                 const double atrValue,
                                 const double indicatorValue,
                                 const bool hasBandSetting,
-                                const StrategyBandSetting &bandSetting)
+                                const StrategyBandSetting &bandSetting,
+                                const double adxValue,
+                                const double donchianWidth)
   {
    if(hasBandSetting && bandSetting.configured && !bandSetting.enabled)
      {
@@ -2550,11 +2793,15 @@ TradeAttemptResult ExecuteEntry(const StrategyState &state,
                    EMPTY_VALUE,
                    EMPTY_VALUE,
                    EMPTY_VALUE,
+                   adxValue,
+                   donchianWidth,
                    OrderOpenTime(),
                    "");
       RegisterTradeMetadata(ticket,
                             direction,
                             atrValue,
+                            adxValue,
+                            donchianWidth,
                             breakEvenEnabled,
                             breakEvenAtrTrigger,
                             breakEvenOffsetPips,
@@ -2685,7 +2932,12 @@ int EvaluateStochastic(double &indicatorValue)
 //+------------------------------------------------------------------+
 //| Process individual strategy                                      |
 //+------------------------------------------------------------------+
-void ProcessStrategy(StrategyIndex index, const double atrValue)
+void ProcessStrategy(StrategyIndex index,
+                     const double atrValue,
+                     const double adxValue,
+                     const double donchianWidth,
+                     const AdxBandState currentAdxState,
+                     const DonchianBandState currentDonchianState)
   {
    StrategyState state = g_strategies[index];
    RefreshLossPause(state);
@@ -2693,13 +2945,27 @@ void ProcessStrategy(StrategyIndex index, const double atrValue)
    if(!state.enabled)
       return;
 
+   if(InpUseAdxFilter && adxValue == EMPTY_VALUE)
+      return;
+
+   if(InpUseDonchianFilter && donchianWidth == EMPTY_VALUE)
+      return;
+
    StrategyBandSetting bandSetting;
    InitStrategyBandSetting(bandSetting);
-   bool hasBandSetting = ResolveBandSetting(index, atrValue, bandSetting);
-   if(hasBandSetting && !bandSetting.enabled)
-     {
-      PrintFormat("Band disabled: strategy=%s ATR=%.6f -> signal ignored", state.name, atrValue);
+   bool hasBandSetting = ResolveBandSetting(index,
+                                            atrValue,
+                                            currentAdxState,
+                                            currentDonchianState,
+                                            bandSetting);
+   bool configRequired = (g_bandConfigLoaded && (InpUseAtrBandConfig || InpUseAdxFilter || InpUseDonchianFilter));
+   if(!hasBandSetting && configRequired)
       return;
+
+   if(hasBandSetting && !bandSetting.enabled)
+      {
+       PrintFormat("Band disabled: strategy=%s ATR=%.6f -> signal ignored", state.name, atrValue);
+       return;
      }
 
    double indicatorValue = 0.0;
@@ -2755,7 +3021,9 @@ void ProcessStrategy(StrategyIndex index, const double atrValue)
                                              atrValue,
                                              indicatorValue,
                                              hasBandSetting,
-                                             bandSetting);
+                                             bandSetting,
+                                             adxValue,
+                                             donchianWidth);
    bool signalConsumed = (attempt == TRADE_ATTEMPT_PLACED ||
                           attempt == TRADE_ATTEMPT_CONSUMED);
    if(signalConsumed)
@@ -2777,38 +3045,63 @@ string DetermineExitReason(const int ticket,
                            const double netProfit)
   {
    double pip = PipSize();
-   double tolerance = (pip > 0.0 ? pip * 0.1 : 0.0001);
+   double tolerance = (pip > 0.0 ? pip : 0.0001);
 
    bool hasTp = (takeProfit > 0.0);
    bool hasSl = (stopLoss > 0.0);
-   bool hitTp = (hasTp && MathAbs(closePrice - takeProfit) <= tolerance + 1e-8);
-   bool hitSl = (hasSl && MathAbs(closePrice - stopLoss) <= tolerance + 1e-8);
+   bool hitTp = false;
+   bool hitSl = false;
+
+   if(hasTp)
+     {
+      if(direction > 0)
+         hitTp = (closePrice >= takeProfit - tolerance - 1e-8);
+      else if(direction < 0)
+         hitTp = (closePrice <= takeProfit + tolerance + 1e-8);
+      else
+         hitTp = (MathAbs(closePrice - takeProfit) <= tolerance + 1e-8);
+     }
+
+   if(hasSl)
+     {
+      if(direction > 0)
+         hitSl = (closePrice <= stopLoss + tolerance + 1e-8);
+      else if(direction < 0)
+         hitSl = (closePrice >= stopLoss - tolerance - 1e-8);
+      else
+         hitSl = (MathAbs(closePrice - stopLoss) <= tolerance + 1e-8);
+     }
 
    if(hitTp)
       return("TAKE_PROFIT");
 
-  if(hitSl)
+   int metaIndex = FindTradeMetadataIndex(ticket);
+   int beOffsetPips = InpBreakEvenOffsetPips;
+   StopUpdateReason lastStopReason = STOP_UPDATE_INITIAL;
+   if(metaIndex >= 0)
      {
-      int metaIndex = FindTradeMetadataIndex(ticket);
-      int beOffsetPips = InpBreakEvenOffsetPips;
-      if(metaIndex >= 0)
-        {
-         TradeMetadata meta = g_tradeMetadata[metaIndex];
-         StopUpdateReason reason = meta.lastStopReason;
-         if(reason == STOP_UPDATE_BREAK_EVEN)
-            return("STOP_BREAKEVEN");
-         if(reason == STOP_UPDATE_TRAILING)
-            return("STOP_TRAILING");
-         if(meta.breakEvenOffsetPips >= 0)
-            beOffsetPips = meta.breakEvenOffsetPips;
-        }
+      TradeMetadata meta = g_tradeMetadata[metaIndex];
+      lastStopReason = meta.lastStopReason;
+      if(meta.breakEvenOffsetPips >= 0)
+         beOffsetPips = meta.breakEvenOffsetPips;
+     }
+
+   if(hitSl)
+     {
+      if(lastStopReason == STOP_UPDATE_BREAK_EVEN)
+         return("STOP_BREAKEVEN");
+      if(lastStopReason == STOP_UPDATE_TRAILING)
+         return("STOP_TRAILING");
 
       if(pip > 0.0)
         {
          double breakEvenStop = (direction > 0
                                  ? openPrice + beOffsetPips * pip
                                  : openPrice - beOffsetPips * pip);
-         if(MathAbs(stopLoss - breakEvenStop) <= tolerance + 1e-8)
+         bool breachedBreakEven = (direction > 0
+                                   ? closePrice <= breakEvenStop + tolerance + 1e-8
+                                   : closePrice >= breakEvenStop - tolerance - 1e-8);
+         if(breachedBreakEven)
             return("STOP_BREAKEVEN");
         }
       return("STOP_LOSS");
@@ -2863,8 +3156,15 @@ void CheckClosedOrders()
 
       int metaIndex = FindTradeMetadataIndex(ticket);
       double entryAtr = EMPTY_VALUE;
+      double entryAdx = EMPTY_VALUE;
+      double entryDonchianWidth = EMPTY_VALUE;
       if(metaIndex >= 0)
-         entryAtr = g_tradeMetadata[metaIndex].entryAtr;
+        entryAtr = g_tradeMetadata[metaIndex].entryAtr;
+      if(metaIndex >= 0)
+        {
+         entryAdx = g_tradeMetadata[metaIndex].entryAdx;
+         entryDonchianWidth = g_tradeMetadata[metaIndex].entryDonchianWidth;
+        }
 
       double volume     = OrderLots();
       double openPrice  = OrderOpenPrice();
@@ -2917,6 +3217,8 @@ void CheckClosedOrders()
                     commission,
                     netProfit,
                     pipValue,
+                    entryAdx,
+                    entryDonchianWidth,
                     closeTime,
                     exitReason);
 
@@ -3001,13 +3303,15 @@ void ManageOpenPositions(const double atrValue)
       int    trailingMinStepPips = InpTrailingMinStepPips;
 
       if(metaIndex < 0)
-        {
-         RegisterTradeMetadata(OrderTicket(),
-                               (orderType == OP_BUY ? 1 : -1),
-                               atrValue,
-                               breakEvenEnabled,
-                               breakEvenAtrTrigger,
-                               breakEvenOffsetPips,
+       {
+        RegisterTradeMetadata(OrderTicket(),
+                              (orderType == OP_BUY ? 1 : -1),
+                              atrValue,
+                              EMPTY_VALUE,
+                              EMPTY_VALUE,
+                              breakEvenEnabled,
+                              breakEvenAtrTrigger,
+                              breakEvenOffsetPips,
                                trailingEnabled,
                                trailingAtrTrigger,
                                trailingAtrStep,
@@ -3016,6 +3320,7 @@ void ManageOpenPositions(const double atrValue)
         }
 
       TradeMetadata meta;
+      ZeroMemory(meta);
       bool hasMeta = false;
       if(metaIndex >= 0)
         {
@@ -3235,10 +3540,46 @@ int OnInit()
       return(INIT_PARAMETERS_INCORRECT);
      }
 
-   if(InpATRPeriod < 1)
+  if(InpATRPeriod < 1)
      {
       Print("ATR period must be at least 1.");
       return(INIT_PARAMETERS_INCORRECT);
+     }
+
+   if((InpUseAdxFilter || InpUseDonchianFilter) && !InpUseAtrBandConfig)
+     {
+      Print("ADX/Donchianフィルタを使用するには ATR バンド設定 (InpUseAtrBandConfig) を有効にしてください。");
+      return(INIT_PARAMETERS_INCORRECT);
+     }
+
+   if(InpUseAdxFilter)
+     {
+      if(InpAdxPeriod < 1)
+        {
+         Print("ADX period must be at least 1 when ADX filter is enabled.");
+         return(INIT_PARAMETERS_INCORRECT);
+        }
+      if(InpAdxTrendThreshold <= 0.0)
+        {
+         Print("ADX閾値は正の値である必要があります。");
+         return(INIT_PARAMETERS_INCORRECT);
+        }
+     }
+
+   if(InpUseDonchianFilter)
+     {
+      if(InpDonchianPeriod < 1)
+        {
+         Print("Donchian期間は1以上に設定してください。");
+         return(INIT_PARAMETERS_INCORRECT);
+        }
+      if(!(InpDonchianNarrowMax > 0.0 &&
+           InpDonchianNarrowMax < InpDonchianMidMax &&
+           InpDonchianMidMax < InpDonchianWideMax))
+        {
+         Print("Donchian幅しきい値は Narrow < Mid < Wide の順で設定してください。");
+         return(INIT_PARAMETERS_INCORRECT);
+        }
      }
 
    if(InpFastMAPeriod <= 0 || InpSlowMAPeriod <= 0)
@@ -3488,18 +3829,23 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnTick()
   {
-   if(Bars < 200)
-      return;
-
    UpdateDynamicPositionControls();
 
    double atrValue = iATR(NULL, 0, InpATRPeriod, 1);
 
-   ProcessStrategy(STRAT_MA, atrValue);
-   ProcessStrategy(STRAT_RSI, atrValue);
-   ProcessStrategy(STRAT_CCI, atrValue);
-   ProcessStrategy(STRAT_MACD, atrValue);
-   ProcessStrategy(STRAT_STOCH, atrValue);
+   if(Bars >= 200)
+     {
+      double adxValue = (InpUseAdxFilter ? iADX(NULL, 0, InpAdxPeriod, PRICE_CLOSE, MODE_MAIN, 1) : EMPTY_VALUE);
+      double donchianWidth = (InpUseDonchianFilter ? CalculateDonchianWidth(InpDonchianPeriod) : EMPTY_VALUE);
+      AdxBandState currentAdxState = DetermineAdxState(adxValue);
+      DonchianBandState currentDonchianState = DetermineDonchianState(donchianWidth);
+
+      ProcessStrategy(STRAT_MA, atrValue, adxValue, donchianWidth, currentAdxState, currentDonchianState);
+      ProcessStrategy(STRAT_RSI, atrValue, adxValue, donchianWidth, currentAdxState, currentDonchianState);
+      ProcessStrategy(STRAT_CCI, atrValue, adxValue, donchianWidth, currentAdxState, currentDonchianState);
+      ProcessStrategy(STRAT_MACD, atrValue, adxValue, donchianWidth, currentAdxState, currentDonchianState);
+      ProcessStrategy(STRAT_STOCH, atrValue, adxValue, donchianWidth, currentAdxState, currentDonchianState);
+     }
 
    ManageOpenPositions(atrValue);
 
