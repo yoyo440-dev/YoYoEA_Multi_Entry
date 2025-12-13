@@ -87,6 +87,7 @@ v1.25 から ATR バンド設定にトレンド／レンジの別条件を持た
 - `InpUseAdxFilter=true` にすると `iADX(InpAdxPeriod)` を参照し、`InpAdxTrendThreshold` 以上を `HIGH`（トレンド）、未満を `LOW`（レンジ）として判定します。CSV に `ADX_STATE=HIGH/LOW/ANY` を記述することで帯域ごとの有効化やパラメータを切り替えられます。
 - `InpUseDonchianFilter=true` にすると Donchian チャネル幅（`InpDonchianPeriod` 本の高値-安値）を計算し、`InpDonchianNarrowMax` / `InpDonchianMidMax` / `InpDonchianWideMax` に基づいて `NARROW/MID/WIDE/ULTRA` の4区分で判定します。CSV の `DONCHIAN_STATE` に `NARROW/MID/WIDE/ULTRA/ANY` を指定すると帯域別のストラテジー設定に反映されます。
   - 互換性のため、Config CSV が `NARROW/WIDE` のみで `MID/ULTRA` 行が無い場合は、EA 側で `MID/ULTRA` を `WIDE` としてフォールバックしてマッチします（`MID/ULTRA` を個別に制御したい場合は CSV に明示行を用意してください）。
+- 追加フィルタ（任意）として、CSV に `ADX_MIN` / `ADX_MAX`（数値）を追加すると、ADXの実測値で範囲フィルタできます（例: `ADX_MIN=35` で 35以上のみ有効化）。`ADX_STATE` と併用可能で、空欄なら無視されます。
 - 新しい `adx_entry` / `donchian_width` 列が `TradeLog_<Profile>.csv` に追加され、Notebook 解析でそのまま利用可能です。
 
 ### 実装概要

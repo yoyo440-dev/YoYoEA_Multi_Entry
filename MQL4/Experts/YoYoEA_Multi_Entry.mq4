@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.27"
+#property version   "1.28"
 #property description "Entry evaluation EA for MA, RSI, CCI, and MACD strategies."
 
 //--- input parameters
@@ -207,6 +207,9 @@ struct BandConfig
    double minAtr;
    double maxAtr;
    AdxBandState      adxState;
+   bool              adxRangeSpecified;
+   double            adxMin;
+   double            adxMax;
    DonchianBandState donchianState;
    StrategyBandSetting strategySettings[STRAT_TOTAL];
   };
@@ -887,6 +890,9 @@ void InitBandConfig(BandConfig &config)
    config.minAtr = 0.0;
    config.maxAtr = DBL_MAX;
    config.adxState = ADX_STATE_ANY;
+   config.adxRangeSpecified = false;
+   config.adxMin = 0.0;
+   config.adxMax = DBL_MAX;
    config.donchianState = DONCHIAN_STATE_ANY;
    for(int i = 0; i < STRAT_TOTAL; i++)
       InitStrategyBandSetting(config.strategySettings[i]);
@@ -1819,6 +1825,8 @@ bool LoadAtrBandConfig(const string safeProfile)
   int strategyColumnIndex[];
   ArrayResize(strategyColumnIndex, STRAT_TOTAL * columnsPerStrategy);
   int adxStateColumnIndex      = -1;
+  int adxMinColumnIndex        = -1;
+  int adxMaxColumnIndex        = -1;
   int donchianStateColumnIndex = -1;
   for(int strat = 0; strat < STRAT_TOTAL; strat++)
     {
@@ -1872,6 +1880,16 @@ bool LoadAtrBandConfig(const string safeProfile)
                if(EqualsIgnoreCase(header, "ADX_STATE"))
                  {
                   adxStateColumnIndex = col;
+                  continue;
+                 }
+               if(EqualsIgnoreCase(header, "ADX_MIN"))
+                 {
+                  adxMinColumnIndex = col;
+                  continue;
+                 }
+               if(EqualsIgnoreCase(header, "ADX_MAX"))
+                 {
+                  adxMaxColumnIndex = col;
                   continue;
                  }
                if(EqualsIgnoreCase(header, "DONCHIAN_STATE"))
@@ -1968,6 +1986,55 @@ bool LoadAtrBandConfig(const string safeProfile)
       if(adxStateColumnIndex >= 0 && adxStateColumnIndex < columnCount)
          adxStateText = StripUtf8Bom(TrimString(columns[adxStateColumnIndex]));
       tempConfig.adxState = ParseAdxStateText(adxStateText);
+
+      string adxMinText = "";
+      if(adxMinColumnIndex >= 0 && adxMinColumnIndex < columnCount)
+         adxMinText = StripUtf8Bom(TrimString(columns[adxMinColumnIndex]));
+      string adxMaxText = "";
+      if(adxMaxColumnIndex >= 0 && adxMaxColumnIndex < columnCount)
+         adxMaxText = StripUtf8Bom(TrimString(columns[adxMaxColumnIndex]));
+
+      if(StringLen(adxMinText) > 0 || StringLen(adxMaxText) > 0)
+        {
+         double adxMinValue = 0.0;
+         double adxMaxValue = DBL_MAX;
+         bool minSpecified = false;
+         bool maxSpecified = false;
+
+         if(StringLen(adxMinText) > 0)
+           {
+            if(!ParseDoubleValue(adxMinText, adxMinValue))
+              {
+               rowValid = false;
+               rowErrorCause = StringFormat("invalid ADX_MIN value '%s'", adxMinText);
+              }
+            else
+               minSpecified = true;
+           }
+         if(rowValid && StringLen(adxMaxText) > 0)
+           {
+            if(!ParseDoubleValue(adxMaxText, adxMaxValue))
+              {
+               rowValid = false;
+               rowErrorCause = StringFormat("invalid ADX_MAX value '%s'", adxMaxText);
+              }
+            else
+               maxSpecified = true;
+           }
+
+         if(rowValid && minSpecified && maxSpecified && adxMaxValue <= adxMinValue)
+           {
+            rowValid = false;
+            rowErrorCause = StringFormat("ADX_MAX must be greater than ADX_MIN (min=%.6f max=%.6f)", adxMinValue, adxMaxValue);
+           }
+
+         if(rowValid)
+           {
+            tempConfig.adxRangeSpecified = true;
+            tempConfig.adxMin = (minSpecified ? adxMinValue : 0.0);
+            tempConfig.adxMax = (maxSpecified ? adxMaxValue : DBL_MAX);
+           }
+        }
 
       string donchianStateText = "";
       if(donchianStateColumnIndex >= 0 && donchianStateColumnIndex < columnCount)
@@ -2094,6 +2161,7 @@ bool LoadAtrBandConfig(const string safeProfile)
 //+------------------------------------------------------------------+
 bool ResolveBandSetting(StrategyIndex index,
                         const double atrValue,
+                        const double adxValue,
                         const AdxBandState currentAdxState,
                         const DonchianBandState currentDonchianState,
                         StrategyBandSetting &outSetting)
@@ -2129,6 +2197,16 @@ bool ResolveBandSetting(StrategyIndex index,
                             band.adxState == currentAdxState);
          if(!adxMatches)
             continue;
+
+         if(band.adxRangeSpecified)
+           {
+            if(adxValue == EMPTY_VALUE)
+               continue;
+            if(adxValue < band.adxMin)
+               continue;
+            if(band.adxMax != DBL_MAX && adxValue >= band.adxMax)
+               continue;
+           }
 
          bool donchianMatches = (band.donchianState == DONCHIAN_STATE_ANY ||
                                  effectiveDonchianState == DONCHIAN_STATE_ANY ||
@@ -2328,6 +2406,7 @@ void InitialiseTradeMetadata()
         DonchianBandState entryDonchianState = DetermineDonchianState(entryDonchianWidth);
         if(ResolveBandSetting((StrategyIndex)stratIndex,
                               entryAtrValue,
+                              entryAdxValue,
                               entryAdxState,
                               entryDonchianState,
                               bandSetting))
@@ -3072,6 +3151,7 @@ void ProcessStrategy(StrategyIndex index,
    InitStrategyBandSetting(bandSetting);
    bool hasBandSetting = ResolveBandSetting(index,
                                             atrValue,
+                                            adxValue,
                                             currentAdxState,
                                             currentDonchianState,
                                             bandSetting);
