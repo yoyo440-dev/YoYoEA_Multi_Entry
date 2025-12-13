@@ -85,7 +85,8 @@ YoYoEA_Multi_Entry（旧 YoYoEntryTester）は複数ストラテジー（MA、RS
 v1.25 から ATR バンド設定にトレンド／レンジの別条件を持たせられるようになりました。Config CSV の各帯域に `ADX_STATE` / `DONCHIAN_STATE` を追加し、実際の値は EA が取得した ADX・Donchian 幅に応じて切り替わります。
 
 - `InpUseAdxFilter=true` にすると `iADX(InpAdxPeriod)` を参照し、`InpAdxTrendThreshold` 以上を `HIGH`（トレンド）、未満を `LOW`（レンジ）として判定します。CSV に `ADX_STATE=HIGH/LOW/ANY` を記述することで帯域ごとの有効化やパラメータを切り替えられます。
-- `InpUseDonchianFilter=true` にすると Donchian チャネル幅（`InpDonchianPeriod` 本の高値-安値）を計算し、現状は `NARROW/WIDE` の2区分で判定します（`MID/ULTRA` は `WIDE` 扱いとして互換マッチします）。CSV の `DONCHIAN_STATE` に `NARROW/MID/WIDE/ULTRA/ANY` を指定すると帯域別のストラテジー設定に反映されます。
+- `InpUseDonchianFilter=true` にすると Donchian チャネル幅（`InpDonchianPeriod` 本の高値-安値）を計算し、`InpDonchianNarrowMax` / `InpDonchianMidMax` / `InpDonchianWideMax` に基づいて `NARROW/MID/WIDE/ULTRA` の4区分で判定します。CSV の `DONCHIAN_STATE` に `NARROW/MID/WIDE/ULTRA/ANY` を指定すると帯域別のストラテジー設定に反映されます。
+  - 互換性のため、Config CSV が `NARROW/WIDE` のみで `MID/ULTRA` 行が無い場合は、EA 側で `MID/ULTRA` を `WIDE` としてフォールバックしてマッチします（`MID/ULTRA` を個別に制御したい場合は CSV に明示行を用意してください）。
 - 新しい `adx_entry` / `donchian_width` 列が `TradeLog_<Profile>.csv` に追加され、Notebook 解析でそのまま利用可能です。
 
 ### 実装概要

@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.26"
+#property version   "1.27"
 #property description "Entry evaluation EA for MA, RSI, CCI, and MACD strategies."
 
 //--- input parameters
@@ -27,7 +27,7 @@ input double InpAdxTrendThreshold = 30.0;
 input bool   InpUseDonchianFilter = true;
 input int    InpDonchianPeriod    = 20;
 input double InpDonchianNarrowMax = 0.250;
-input double InpDonchianMidMax    = 0.750;
+input double InpDonchianMidMax    = 1.000;
 input double InpDonchianWideMax   = 2.000;
 
 //--- indicator parameters (fixed as per requirements, exposed for fine tuning if needed)
@@ -969,13 +969,6 @@ DonchianBandState ParseDonchianStateText(const string text)
    return(DONCHIAN_STATE_ANY);
   }
 
-bool IsWideDonchianState(const DonchianBandState state)
-  {
-   return(state == DONCHIAN_STATE_MID ||
-          state == DONCHIAN_STATE_WIDE ||
-          state == DONCHIAN_STATE_ULTRA);
-  }
-
 AdxBandState DetermineAdxState(const double adxValue)
   {
    if(!InpUseAdxFilter)
@@ -1001,12 +994,16 @@ DonchianBandState DetermineDonchianState(const double width)
    if(width <= 0.0)
       return(DONCHIAN_STATE_NARROW);
 
-   // 2段階(low/high)に寄せた閾値設定: NarrowMaxで分岐、それ以上はhigh扱い
    if(width < InpDonchianNarrowMax)
       return(DONCHIAN_STATE_NARROW);
 
-   // mid/wide/ultraをまとめてhigh扱い
-   return(DONCHIAN_STATE_WIDE);
+   if(width < InpDonchianMidMax)
+      return(DONCHIAN_STATE_MID);
+
+   if(width < InpDonchianWideMax)
+      return(DONCHIAN_STATE_WIDE);
+
+   return(DONCHIAN_STATE_ULTRA);
   }
 
 double CalculateDonchianWidthForShift(const int period, const int shift)
@@ -2105,34 +2102,46 @@ bool ResolveBandSetting(StrategyIndex index,
       return(false);
 
    int total = ArraySize(g_bandConfigs);
-   for(int i = 0; i < total; i++)
+
+   for(int pass = 0; pass < 2; pass++)
      {
-      BandConfig band = g_bandConfigs[i];
-      double maxAtr = band.maxAtr;
-      bool inRange = (atrValue >= band.minAtr &&
-                      (maxAtr == DBL_MAX ? true : atrValue < maxAtr));
-      if(!inRange)
-         continue;
-
-      bool adxMatches = (band.adxState == ADX_STATE_ANY ||
-                         currentAdxState == ADX_STATE_ANY ||
-                         band.adxState == currentAdxState);
-      if(!adxMatches)
-         continue;
-
-      bool donchianMatches = (band.donchianState == DONCHIAN_STATE_ANY ||
-                              currentDonchianState == DONCHIAN_STATE_ANY ||
-                              band.donchianState == currentDonchianState ||
-                              (IsWideDonchianState(band.donchianState) &&
-                               IsWideDonchianState(currentDonchianState)));
-      if(!donchianMatches)
-         continue;
-
-      StrategyBandSetting setting = band.strategySettings[index];
-      if(setting.configured)
+      DonchianBandState effectiveDonchianState = currentDonchianState;
+      if(pass == 1)
         {
-         outSetting = setting;
-         return(true);
+         if(!(currentDonchianState == DONCHIAN_STATE_MID ||
+              currentDonchianState == DONCHIAN_STATE_ULTRA))
+            break;
+         // 互換フォールバック: 設定側が NARROW/WIDE のみのとき、MID/ULTRA は WIDE として扱う
+         effectiveDonchianState = DONCHIAN_STATE_WIDE;
+        }
+
+      for(int i = 0; i < total; i++)
+        {
+         BandConfig band = g_bandConfigs[i];
+         double maxAtr = band.maxAtr;
+         bool inRange = (atrValue >= band.minAtr &&
+                         (maxAtr == DBL_MAX ? true : atrValue < maxAtr));
+         if(!inRange)
+            continue;
+
+         bool adxMatches = (band.adxState == ADX_STATE_ANY ||
+                            currentAdxState == ADX_STATE_ANY ||
+                            band.adxState == currentAdxState);
+         if(!adxMatches)
+            continue;
+
+         bool donchianMatches = (band.donchianState == DONCHIAN_STATE_ANY ||
+                                 effectiveDonchianState == DONCHIAN_STATE_ANY ||
+                                 band.donchianState == effectiveDonchianState);
+         if(!donchianMatches)
+            continue;
+
+         StrategyBandSetting setting = band.strategySettings[index];
+         if(setting.configured)
+           {
+            outSetting = setting;
+            return(true);
+           }
         }
      }
 
