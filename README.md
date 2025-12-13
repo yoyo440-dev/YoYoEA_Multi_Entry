@@ -15,17 +15,20 @@ YoYoEA_Multi_Entry（旧 YoYoEntryTester）は複数ストラテジー（MA、RS
   - 追加の閾値（`InpLotReductionEquityThreshold`, `InpLotReductionFactor`）で資産減少時のロット縮小に対応
 - 稼働ガード
   - 戦略ごとのクールダウン／連敗休止 (`InpCooldownMinutes`, `InpLossStreakPause`, `InpLossPauseMinutes`)
-  - 既存ポジションと逆方向のシグナルを抑制 (`InpAllowOppositePositions`)
+  - 既存ポジションと逆方向のシグナル（両建て）を抑制（他ストラテジー/同一ストラテジー含む、`InpAllowOppositePositions`）
   - 取引時間帯フィルタと金曜カットオフ (`InpUseTradingSessions`, `InpSessionStartHour`, `InpSessionEndHour`, `InpSessionSkipFriday`, `InpFridayCutoffHour`)
 - 詳細ログ出力：エントリー／決済を CSV に記録し、パラメータスナップショットや ATR バンド適用状況をコンソールに出力
 
 ## 入力パラメータの補足
 - `InpUseRiskBasedLots = true` の場合、損切り距離（ATR／pips）から口座残高に対するリスク％（`InpRiskPercent`）でロットを算出します。
+- スリッページは MT4 の `OrderSend` 仕様に合わせて「ポイント」指定です。`InpSlippageInPips=true` にすると入力値を pips として解釈し、内部でポイントへ換算します。
 - `InpLossStreakPause` に達した損失連続数で休止し、`InpLossPauseMinutes` が 0 の場合は再開条件を外部で整えるまで停止します。
 - 取引セッションはサーバー時間を基準とし、`InpSessionStartHour` ≤ 時刻 < `InpSessionEndHour` の間のみ発注します。金曜は `InpSessionSkipFriday = true` と `InpFridayCutoffHour` で早期停止が可能です。
+- ADX/Donchian フィルタを利用する場合は `InpUseAdxFilter` / `InpAdxPeriod` / `InpAdxTrendThreshold`、`InpUseDonchianFilter` / `InpDonchianPeriod` / `InpDonchianNarrowMax` / `InpDonchianMidMax` / `InpDonchianWideMax` を設定してください（しきい値は Narrow < Mid < Wide になるよう配置）。
+- ログが多い場合は `InpEnableVerboseLogs=false` のまま運用し、必要なときだけ true にしてください（CSV 読込の詳細などを追加で出力します）。
 
 ## ログファイル
-- トレードログ：`TradeLog_<Profile>.csv` – ENTRY/EXIT 双方を記録。価格やインジケータ値に加え、`atr_entry` / `atr_exit` 列でそれぞれの ATR を保持し、損益（`net`）、獲得 pips、`exit_reason`（`TAKE_PROFIT` / `STOP_BREAKEVEN` / `STOP_TRAILING` / `STOP_LOSS` / `MANUAL_*`）を追跡
+- トレードログ：`TradeLog_<Profile>.csv` – ENTRY/EXIT 双方を記録。価格やインジケータ値に加え、`atr_entry` / `atr_exit` / `adx_entry` / `donchian_width` 列で当時の環境を保持し、損益（`net`）、獲得 pips、`exit_reason`（`TAKE_PROFIT` / `STOP_BREAKEVEN` / `STOP_TRAILING` / `STOP_LOSS` / `MANUAL_*`）を追跡
 
 ## ビルドと配置
 1. PowerShell で `Scripts/build_experts.ps1` を実行すると、MQL4/Experts 配下の EA をまとめてコンパイルできます。
@@ -57,6 +60,7 @@ YoYoEA_Multi_Entry（旧 YoYoEntryTester）は複数ストラテジー（MA、RS
 ## ATRバンドCSVフォーマット
 - CSV は『minAtr,maxAtr,<Strategy>_Enable,<Strategy>_Mode,<Strategy>_SL,<Strategy>_TP』の列を戦略ごとに持ちます。
 - デフォルトの列順: MA / RSI / CCI / MACD / STOCH。見出し名が一致すれば順番入れ替えや一部省略も可能。
+- 任意で `ADX_STATE`（`HIGH`/`LOW`/`ANY`）や `DONCHIAN_STATE`（`NARROW`/`MID`/`WIDE`/`ULTRA`/`ANY`）を追加すると、トレンド・幅条件ごとにストラテジー設定を切り替えられます。
 - Mode は GLOBAL/ATR/PIPS を指定し、SL/TP は ATR 倍率または pips 値を入力します。
 - Enable を OFF にすると該当ストラテジーは該当帯域でシグナルを無効化します。
 - サンプル: minAtr,maxAtr,MA_Enable,MA_Mode,... を参照し、必要に応じて帯域を追加してください。
@@ -76,27 +80,22 @@ YoYoEA_Multi_Entry（旧 YoYoEntryTester）は複数ストラテジー（MA、RS
 - 市場状態ログの収集方法、ETL パイプライン、XGBoost による Config 推薦フローを `docs/ml_config_pipeline.md` にまとめています。
 - 特徴量カテゴリ（市場状態／EA状態／Configメタデータ）や、StateLogger EA・SignalLog 拡張の仕様も同ファイルを参照してください。
 
-## 今後の仕様拡張: ADX+Donchian フィルタ
+## ADX / Donchian フィルタ
 
-### 目標仕様
-- ATR バンド設定にトレンド強弱（ADX）を取り込む。
-  - Config CSV に `ADX_STATE` 列を追加し、ATR 帯ごとに `HIGH` (トレンド) / `LOW` (レンジ) の 2 設定を用意。
-  - EA はエントリー時に `entryAdxValue` を取得し、ATR 帯と ADX_STATE が一致する行のみ適用。
-- Donchian 幅（narrow/mid/wide/ultra）も条件に使えるようにし、帯域によってストラテジーの有効/無効や SL/BE/Trail 値を切り替え。
-- TradeLog に `adx_entry` や Donchian 幅などの列を追加して分析と連携。
+v1.25 から ATR バンド設定にトレンド／レンジの別条件を持たせられるようになりました。Config CSV の各帯域に `ADX_STATE` / `DONCHIAN_STATE` を追加し、実際の値は EA が取得した ADX・Donchian 幅に応じて切り替わります。
 
-### 実装計画
-1. **設定構造の拡張**
-   - `AtrBandConfig` のヘッダに `ADX_STATE` と必要なら `DONCHIAN_STATE` を追加。後方互換のため未記入時は `LOW` / `ANY` と扱う。
-   - `StrategyBandSetting` に `adxState` / `donchianState` を追加し、既存の SL/TP/BE/Trail と併せて保持。
-2. **ADX 判定ロジック**
-   - `ResolveBandSetting()` へ `entryAdxValue` を渡し、行の `adxState` と `InpAdxThresholdHigh` を基に採用可否を決定。
-   - ADX 閾値 (`InpAdxPeriod`, `InpAdxThresholdHigh`) を extern パラメータとして追加。
-3. **Donchian 幅判定**
-   - ATR ゾーン確定後に `donchian_width` 用の関数を呼び、CSV の `DONCHIAN_STATE` が `NARROW` / `WIDE` などで指定されていればフィルタ。
-4. **ログ／メタデータ拡張**
-   - `TradeMetadata` と `TradeLog` に ADX / Donchian 情報を保持し、後段の Notebook 解析と一致させる。
-5. **テスト計画**
-   - 旧 Config でも動作することを確認したうえで、新しい ADX_STATE を使った設定ファイルを生成。
-   - バックテストログを Notebook で集計し、ATR×ADX フィルタ適用の効果を検証。
+- `InpUseAdxFilter=true` にすると `iADX(InpAdxPeriod)` を参照し、`InpAdxTrendThreshold` 以上を `HIGH`（トレンド）、未満を `LOW`（レンジ）として判定します。CSV に `ADX_STATE=HIGH/LOW/ANY` を記述することで帯域ごとの有効化やパラメータを切り替えられます。
+- `InpUseDonchianFilter=true` にすると Donchian チャネル幅（`InpDonchianPeriod` 本の高値-安値）を計算し、現状は `NARROW/WIDE` の2区分で判定します（`MID/ULTRA` は `WIDE` 扱いとして互換マッチします）。CSV の `DONCHIAN_STATE` に `NARROW/MID/WIDE/ULTRA/ANY` を指定すると帯域別のストラテジー設定に反映されます。
+- 新しい `adx_entry` / `donchian_width` 列が `TradeLog_<Profile>.csv` に追加され、Notebook 解析でそのまま利用可能です。
+
+### 実装概要
+1. ATR バンド CSV
+   - ヘッダに `ADX_STATE` と `DONCHIAN_STATE` を追加（任意。未指定時は `ANY` として扱う）。
+   - 例: `MINATR,MAXATR,ADX_STATE,DONCHIAN_STATE,MA_ENABLE,...`
+2. EA ロジック
+   - エントリー前に ADX と Donchian 幅を算出し、ATR 帯に加えて `ADX_STATE` / `DONCHIAN_STATE` が一致した行のみ有効化。
+   - 一致する行が無い場合は、その帯域のシグナルをスキップすることでトレンド／レンジの制御が可能です。
+3. ログとメタデータ
+   - 取引メタデータに ADX／Donchian を保持し、ENTRY/EXIT 両イベントでログ出力。
+   - Notebook や `analysis/` 以下のテンプレートと整合します。
 

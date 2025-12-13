@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.25"
+#property version   "1.26"
 #property description "Entry evaluation EA for MA, RSI, CCI, and MACD strategies."
 
 //--- input parameters
@@ -8,6 +8,8 @@ input double InpLots            = 0.10;
 input int    InpStopLossPips    = 50;
 input int    InpTakeProfitPips  = 100;
 input int    InpSlippage        = 3;
+input bool   InpSlippageInPips  = false;
+input bool   InpEnableVerboseLogs = false;
 
 input bool   InpEnableMA        = true;
 input bool   InpEnableCCI       = true;
@@ -19,14 +21,14 @@ input bool   InpUseAtrBandConfig = false;
 input string InpAtrBandConfigFile = "";
 
 input int    InpATRPeriod       = 14;
-input bool   InpUseAdxFilter    = false;
+input bool   InpUseAdxFilter    = true;
 input int    InpAdxPeriod       = 14;
-input double InpAdxTrendThreshold = 25.0;
-input bool   InpUseDonchianFilter = false;
+input double InpAdxTrendThreshold = 30.0;
+input bool   InpUseDonchianFilter = true;
 input int    InpDonchianPeriod    = 20;
 input double InpDonchianNarrowMax = 0.250;
-input double InpDonchianMidMax    = 1.000;
-input double InpDonchianWideMax   = 1.000;
+input double InpDonchianMidMax    = 0.750;
+input double InpDonchianWideMax   = 2.000;
 
 //--- indicator parameters (fixed as per requirements, exposed for fine tuning if needed)
 input int    InpFastMAPeriod    = 14;
@@ -114,6 +116,9 @@ int           g_enabledStrategyCount = 0;
 int           g_totalPositionCap     = 1;
 bool          g_multiPositionActive  = false;
 double        g_effectiveLots        = 0.0;
+datetime      g_lastBandDisabledLogTime = 0;
+datetime      g_lastSpreadSkipLogTime   = 0;
+datetime      g_lastOppositeSkipLogTime = 0;
 
 #define RESULT_LOG_COLUMNS 21
 
@@ -296,6 +301,30 @@ double PipSize()
   }
 
 //+------------------------------------------------------------------+
+//| Utility: derive OrderSend slippage (points)                       |
+//+------------------------------------------------------------------+
+int GetOrderSlippagePoints()
+  {
+   int slippage = InpSlippage;
+   if(slippage < 0)
+      slippage = 0;
+
+   if(!InpSlippageInPips)
+      return(slippage);
+
+   double point = MarketInfo(Symbol(), MODE_POINT);
+   double pip   = PipSize();
+   if(point <= 0.0 || pip <= 0.0)
+      return(slippage);
+
+   double factor = pip / point;
+   int converted = (int)MathRound(slippage * factor);
+   if(converted < 0)
+      converted = 0;
+   return(converted);
+  }
+
+//+------------------------------------------------------------------+
 //| Utility: derive decimal digits for a lot step                    |
 //+------------------------------------------------------------------+
 int StepToDigits(const double step)
@@ -447,6 +476,25 @@ bool IsBetterStopLoss(const int orderType,
   }
 
 //+------------------------------------------------------------------+
+//| Utility: log throttling                                          |
+//+------------------------------------------------------------------+
+bool ShouldLogWithCooldown(datetime &lastLogTime, const int cooldownSeconds)
+  {
+   if(cooldownSeconds <= 0)
+      return(true);
+
+   datetime now = TimeCurrent();
+   if(now <= 0)
+      now = Time[0];
+
+   if(lastLogTime > 0 && now > 0 && (now - lastLogTime) < cooldownSeconds)
+      return(false);
+
+   lastLogTime = now;
+   return(true);
+  }
+
+//+------------------------------------------------------------------+
 //| Utility: trading session guard                                   |
 //+------------------------------------------------------------------+
 bool IsTradingSessionOpen()
@@ -528,6 +576,39 @@ bool HasOppositeStrategyPosition(StrategyIndex currentIndex,
          return(true);
 
       if(direction < 0 && orderType == OP_BUY)
+         return(true);
+     }
+
+   return(false);
+  }
+
+//+------------------------------------------------------------------+
+//| Utility: check for opposite open positions within same strategy   |
+//+------------------------------------------------------------------+
+bool HasOppositePositionForMagic(const int magic,
+                                 const int direction)
+  {
+   if(direction == 0)
+      return(false);
+
+   int oppositeType = (direction > 0 ? OP_SELL : OP_BUY);
+
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+     {
+      if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+         continue;
+
+      if(OrderSymbol() != Symbol())
+         continue;
+
+      int orderType = OrderType();
+      if(orderType != OP_BUY && orderType != OP_SELL)
+         continue;
+
+      if(OrderMagicNumber() != magic)
+         continue;
+
+      if(orderType == oppositeType)
          return(true);
      }
 
@@ -886,6 +967,13 @@ DonchianBandState ParseDonchianStateText(const string text)
       return(DONCHIAN_STATE_ULTRA);
 
    return(DONCHIAN_STATE_ANY);
+  }
+
+bool IsWideDonchianState(const DonchianBandState state)
+  {
+   return(state == DONCHIAN_STATE_MID ||
+          state == DONCHIAN_STATE_WIDE ||
+          state == DONCHIAN_STATE_ULTRA);
   }
 
 AdxBandState DetermineAdxState(const double adxValue)
@@ -1255,6 +1343,9 @@ void WriteParameterSnapshot(const string safeProfile)
    FileWrite(handle, "stop_loss_pips", IntegerToString(InpStopLossPips));
    FileWrite(handle, "take_profit_pips", IntegerToString(InpTakeProfitPips));
    FileWrite(handle, "slippage", IntegerToString(InpSlippage));
+   FileWrite(handle, "slippage_in_pips", BoolToText(InpSlippageInPips));
+   FileWrite(handle, "slippage_points", IntegerToString(GetOrderSlippagePoints()));
+   FileWrite(handle, "enable_verbose_logs", BoolToText(InpEnableVerboseLogs));
    FileWrite(handle, "enable_ma", BoolToText(InpEnableMA));
    FileWrite(handle, "enable_cci", BoolToText(InpEnableCCI));
    FileWrite(handle, "enable_rsi", BoolToText(InpEnableRSI));
@@ -1432,11 +1523,14 @@ void LogInputParameters(const string safeProfile)
    Print("---- YoYoEA_Multi_Entry Parameter Snapshot ----");
    PrintFormat("RunId='%s' ParameterLog='%s'", g_runId, g_parameterLogFileName);
    PrintFormat("ProfileLabel='%s' SafeProfile='%s'", g_profileLabel, safeProfile);
-   PrintFormat("Lots=%.2f StopLossPips=%d TakeProfitPips=%d Slippage=%d",
+   PrintFormat("Lots=%.2f StopLossPips=%d TakeProfitPips=%d SlippageInput=%d SlippageInPips=%s SlippagePoints=%d",
                InpLots,
                InpStopLossPips,
                InpTakeProfitPips,
-               InpSlippage);
+               InpSlippage,
+               BoolToText(InpSlippageInPips),
+               GetOrderSlippagePoints());
+   PrintFormat("Logging: verbose=%s", BoolToText(InpEnableVerboseLogs));
    PrintFormat("Strategy enable flags: MA=%s RSI=%s CCI=%s MACD=%s STOCH=%s",
                BoolToText(InpEnableMA),
                BoolToText(InpEnableRSI),
@@ -1670,21 +1764,24 @@ bool ApplyBandSetting(StrategyBandSetting &setting,
       setting.trailingMinStepPips = parsedInt;
      }
 
-   PrintFormat("ApplyBandSetting result: strategy='%s' enableText='%s' -> %s modeText='%s' -> %s slText='%s' tpText='%s' beEnable='%s' beAtr='%s' beOffset='%s' trEnable='%s' trAtr='%s' trStep='%s' trMin='%s'",
-               strategyLabel,
-               trimmedEnable,
-               BoolToText(setting.enabled),
-               trimmedMode,
-               StopModeToText(setting.mode),
-               trimmedSl,
-               trimmedTp,
-               trimmedBeEn,
-               trimmedBeAtr,
-               trimmedBeOff,
-               trimmedTrEn,
-               trimmedTrAtr,
-               trimmedTrStep,
-               trimmedTrMin);
+   if(InpEnableVerboseLogs)
+     {
+      PrintFormat("ApplyBandSetting result: strategy='%s' enableText='%s' -> %s modeText='%s' -> %s slText='%s' tpText='%s' beEnable='%s' beAtr='%s' beOffset='%s' trEnable='%s' trAtr='%s' trStep='%s' trMin='%s'",
+                  strategyLabel,
+                  trimmedEnable,
+                  BoolToText(setting.enabled),
+                  trimmedMode,
+                  StopModeToText(setting.mode),
+                  trimmedSl,
+                  trimmedTp,
+                  trimmedBeEn,
+                  trimmedBeAtr,
+                  trimmedBeOff,
+                  trimmedTrEn,
+                  trimmedTrAtr,
+                  trimmedTrStep,
+                  trimmedTrMin);
+     }
 
    return(true);
   }
@@ -2025,7 +2122,9 @@ bool ResolveBandSetting(StrategyIndex index,
 
       bool donchianMatches = (band.donchianState == DONCHIAN_STATE_ANY ||
                               currentDonchianState == DONCHIAN_STATE_ANY ||
-                              band.donchianState == currentDonchianState);
+                              band.donchianState == currentDonchianState ||
+                              (IsWideDonchianState(band.donchianState) &&
+                               IsWideDonchianState(currentDonchianState)));
       if(!donchianMatches)
          continue;
 
@@ -2562,7 +2661,8 @@ TradeAttemptResult ExecuteEntry(const StrategyState &state,
   {
    if(hasBandSetting && bandSetting.configured && !bandSetting.enabled)
      {
-      PrintFormat("Band disabled: strategy=%s ATR=%.6f -> entry skipped", state.name, atrValue);
+      if(InpEnableVerboseLogs || ShouldLogWithCooldown(g_lastBandDisabledLogTime, 300))
+         PrintFormat("Band disabled: strategy=%s ATR=%.6f -> entry skipped", state.name, atrValue);
       return(TRADE_ATTEMPT_SKIPPED);
      }
 
@@ -2573,10 +2673,11 @@ TradeAttemptResult ExecuteEntry(const StrategyState &state,
       double spreadPips = CurrentSpreadPips();
       if(spreadPips > InpMaxSpreadPips + 1e-6)
         {
-         PrintFormat("Spread %.2f pips exceeds limit %.2f for %s. Entry skipped.",
-                     spreadPips,
-                     InpMaxSpreadPips,
-                     state.name);
+         if(InpEnableVerboseLogs || ShouldLogWithCooldown(g_lastSpreadSkipLogTime, 60))
+            PrintFormat("Spread %.2f pips exceeds limit %.2f for %s. Entry skipped.",
+                        spreadPips,
+                        InpMaxSpreadPips,
+                        state.name);
          return(TRADE_ATTEMPT_SKIPPED);
         }
      }
@@ -2597,6 +2698,13 @@ TradeAttemptResult ExecuteEntry(const StrategyState &state,
    int stratOpen = CountOpenPositionsForMagic(state.magic);
    if(stratOpen >= InpMaxPositionsPerStrategy)
       return(TRADE_ATTEMPT_SKIPPED);
+
+   if(!InpAllowOppositePositions && HasOppositePositionForMagic(state.magic, direction))
+     {
+      if(InpEnableVerboseLogs || ShouldLogWithCooldown(g_lastOppositeSkipLogTime, 300))
+         PrintFormat("Opposite position exists for %s (magic=%d). Entry skipped.", state.name, state.magic);
+      return(TRADE_ATTEMPT_SKIPPED);
+     }
 
    double requestedLots  = (InpUseRiskBasedLots ? InpLots : g_effectiveLots);
    double normalizedLots = 0.0;
@@ -2756,12 +2864,13 @@ TradeAttemptResult ExecuteEntry(const StrategyState &state,
      }
 
    string comment = state.comment;
+   int slippagePoints = GetOrderSlippagePoints();
    ResetLastError();
    int ticket = OrderSend(Symbol(),
                           cmd,
                           normalizedLots,
                           price,
-                          InpSlippage,
+                          slippagePoints,
                           sl,
                           tp,
                           comment,
@@ -2963,7 +3072,8 @@ void ProcessStrategy(StrategyIndex index,
 
    if(hasBandSetting && !bandSetting.enabled)
       {
-       PrintFormat("Band disabled: strategy=%s ATR=%.6f -> signal ignored", state.name, atrValue);
+       if(InpEnableVerboseLogs || ShouldLogWithCooldown(g_lastBandDisabledLogTime, 300))
+          PrintFormat("Band disabled: strategy=%s ATR=%.6f -> signal ignored", state.name, atrValue);
        return;
      }
 
@@ -3544,15 +3654,15 @@ int OnInit()
       return(INIT_PARAMETERS_INCORRECT);
      }
 
-  if(InpATRPeriod < 1)
+   if(InpSlippage < 0)
      {
-      Print("ATR period must be at least 1.");
+      Print("Slippage must be zero or positive.");
       return(INIT_PARAMETERS_INCORRECT);
      }
 
-   if((InpUseAdxFilter || InpUseDonchianFilter) && !InpUseAtrBandConfig)
+   if(InpATRPeriod < 1)
      {
-      Print("ADX/Donchianフィルタを使用するには ATR バンド設定 (InpUseAtrBandConfig) を有効にしてください。");
+      Print("ATR period must be at least 1.");
       return(INIT_PARAMETERS_INCORRECT);
      }
 
@@ -3815,10 +3925,12 @@ int OnInit()
     {
      if(InpUseAtrBandConfig)
        {
-        PrintFormat("ATR band config '%s' is required but could not be loaded. Initialization aborted.", g_bandConfigPath);
-        return(INIT_PARAMETERS_INCORRECT);
+        PrintFormat("ATR band config '%s' could not be loaded. Continuing with global inputs; ADX/Donchian filters will not switch band settings.", g_bandConfigPath);
        }
-     Print("ATR band config disabled via input parameter.");
+     else
+       {
+        Print("ATR band config disabled via input parameter.");
+       }
     }
 
    EnsureResultLogHeader();

@@ -385,3 +385,32 @@
 2025-12-06T17:27:48+09:00 アクション: state_bt_analysis.ipynbのDonchianビンを2段階に再圧縮([0,0.25,1]→low/high)。結果: ultra偏りを整理し、帯域空欄を解消。次アクション: 再実行してDonchian別の傾向を再確認。
 2025-12-06T17:32:10+09:00 アクション: state_bt_analysis.ipynbの最初のコードセルが改行欠落でSyntaxErrorになっていたため、コードセルを整形し直し（import〜定義群＋ビン設定＋表示設定を改行付きで再構築）。結果: ノートが実行可能な状態に復旧。次アクション: ノート再実行で集計を確認。
 2025-12-06T17:36:11+09:00 アクション: EAのDonchian閾値を環境ビン(low/high)に合わせて再設定。結果: InpDonchianNarrowMax=0.25, Mid/Wide=1.0 にし、DetermineDonchianStateを2段階( narrow / high )相当で扱うよう簡素化。次アクション: コンパイルとBTでフィルタ挙動を確認。
+2025-12-07T09:51:34+09:00 AGENTS.md確認: 指示内容を再確認。次: 指示遵守で作業
+2025-12-07T09:53:20+09:00 Configディレクトリ一覧確認: ADX/DON設定サンプル等を把握。次: ADX/Donchian閾値仕様確認回答
+2025-12-07T09:53:29+09:00 Config/AtrBandConfig_ADX_DON_sample.csv確認: ADX_STATE/DONCHIAN_STATEがLOW/HIGH/MID/ULTRA/ANY等で指定。次: 質問回答
+2025-12-07T09:53:38+09:00 ソース/READMEでADX_STATE,DONCHIAN_STATE仕様検索: ADX_STATEはANY/LOW/HIGH、DonchianはNARROW/MID/WIDE/ULTRA/ANY。次: 回答整理
+2025-12-07T09:53:48+09:00 YoYoEA_Multi_Entry.mq4定義確認: ADX_STATE=ANY/LOW/HIGH, DONCHIAN_STATE=ANY/NARROW/MID/WIDE/ULTRA。次: 回答提示
+2025-12-07T09:54:17+09:00 質問対応: ATR configのADX/DONCHIAN状態について回答。ADX=LOW/HIGH/ANY, DonchianはNARROW/WIDE( MID/ULTRAはWIDE扱い )で設定推奨。次: 追加要望があれば調整
+2025-12-07T10:13:21+09:00 設定空欄挙動確認: ApplyBandSetting/ResolveBandSettingを再確認。空欄のみ列はconfigured=falseでバンド無効化しEAのグローバル設定を使用。部分指定時は指定項目のみ上書き、未指定は-1/未指定扱いでグローバル値を使用。次: ユーザーへ説明。
+2025-12-07T11:34:15+09:00 MA_CROSS帯別結果確認: 0.10-0.14/0.18+がプラス、0.00-0.10/0.14-0.18が微マイナス。次: 設定方針提案
+2025-12-07T11:39:34+09:00 Configファイル確認: Config/v125_AtrBandConfig_YoYoEA_Multi_Entry_M15_MA_2.csv を内容確認(ADX×DON全組合せ、MAのみ設定)。次: 相談回答。
+2025-12-07T11:41:22+09:00 他指標空欄時挙動確認: AtrBandConfig読込時、該当ATR/ADX/DON帯でstrategy設定がconfigured=falseだとProcessStrategyでスキップされGlobal Onでも無効化。対応: 各ストラテジー列に最低限ENABLE=ON(必要ならMODE=GLOBAL)を入れband設定を有効化する。
+2025-12-07T11:45:44+09:00 MA_CROSS結果再確認: 各ATR帯のSTOP_LOSS/STOP_TRAILING内訳を確認し調整案検討。次: 0.14-0.18帯のトレールONやSL調整を提案。
+2025-12-07T11:49:15+09:00 MA_3確認: 0.14-0.18帯LOW/NARROWのみTrail ON, ほか3行はOFFのまま。0.18+でSL=2.1に微締め。差分要確認。次: 修正提案とメモ。
+2025-12-07T11:58:04+09:00 InpAdxTrendThreshold初期値を25→30へ引き上げ (MA_CROSS ADX>30をHIGH扱いに寄せる). 次: BTでADX HIGH/LOW挙動確認。
+2025-12-07T12:06:00+09:00 Config確認: v125_AtrBandConfig_YoYoEA_Multi_Entry_M15_MA_4.csv を内容確認(ADX LOW帯0.00-0.18はOFF, HIGH帯ON, 0.18+はLOW/HIGHともONでSL2/TP5/Trail1.7/0.3/1)。次: ユーザーへフィードバック。
+2025-12-07T12:15:33+09:00 説明: LOWをOFFにするとHIGHも消える理由を共有。ADX>=閾値30が少なく、HIGH行にマッチせずResolveBandSetting失敗。対処案: 閾値を下げる(例28)、ADX=ANYフォールバック追加、LOWをONに戻す等。
+2025-12-07T12:31:17+09:00 調査: BTログ(analysis/bt_results/TradeLog_v125_AtrBandConfig_YoYoEA_Multi_Entry_M15_MA_{2,3,4}.csv)でENTRYのadx_entryが全て空→InpUseAdxFilterがOFFで実行され、currentAdxState=ANYのためLOW/OFF行が最初にマッチしてトレード全スキップとなっていた。原因はADXフィルタ無効状態。次: InpUseAdxFilterをONにしたプリセットで再BT、必要ならコードで警告追加を検討。
+2025-12-07T12:37:50+09:00 初期化挙動修正: ADX/DonchianフィルタONでもATRバンド未使用/未読込で停止しないよう変更。Load失敗時は警告のみでグローバル値で続行(フィルタでのバンド切替なし)。
+2025-12-07T12:38:33+09:00 初期値変更: InpUseAdxFilter/InUseDonchianFilter をデフォルトtrueに設定。
+2025-12-07T13:33:16+09:00 Donchian初期値修正: Narrow/0.25, Mid/0.75, Wide/2.0 に変更しデフォルトでNarrow<Mid<Wideを満たすようにした。初期化失敗(32767)の原因はWide=Mid=1.0でバリデーションエラー。
+2025-12-07T13:49:58+09:00 Config更新: v125_AtrBandConfig_YoYoEA_Multi_Entry_M15_MA_5.csv 調整 0-0.10帯SL2.0/TrailStep0.2に締め、0.18+帯SL1.6/BE_ATR0.8/TrailStep0.20で損失抑制寄りに変更。
+2025-12-07T14:00:45+09:00 MA_7集計確認: 0.18+SL約-312/TRL+336でギリプラス。0.10-0.14SL-225、0.14-0.18SL-122。次: 0.18+でSL1.4/BE0.6/TrailStep0.15案、0.10-0.14SL2.2案など提案予定。
+2025-12-07T14:02:19+09:00 新規作成: Config/v125_AtrBandConfig_YoYoEA_Multi_Entry_M15_MA_8.csv (0-0.10 SL2.0/Trail0.2, 0.10-0.14 SL2.2/Trail0.2, 0.18+ SL1.5/BE0.7/Trail0.18)。テスト待ち。
+2025-12-07T14:09:58+09:00 新規作成: Config/v125_AtrBandConfig_YoYoEA_Multi_Entry_M15_MA_9.csv 0.18+TrailStep0.15/LOW帯0.18+をOFF、高帯継続。0.10-0.14はSL2.4維持。
+2025-12-07T14:14:26+09:00 新規: Config/v125_AtrBandConfig_YoYoEA_Multi_Entry_M15_MA_10.csv 0.10-0.14のSLを2.0に締め、その他はMA_9と同一。
+2025-12-13T21:41:17+09:00 EAレビュー: MQL4/Experts/YoYoEA_Multi_Entry.mq4(v1.25)のOnInit/OnTick/ExecuteEntry/LoadAtrBandConfig/ManageOpenPositionsを確認。懸念: (1)ログ出力が多くテスター/実運用でノイズ化(ApplyBandSetting/Spread超過など)、(2)InpAllowOppositePositions=falseでも同一戦略内の両建てが発生し得る設計、(3)DONCHIAN_STATEは実質NARROW/WIDEの2段階でMID/ULTRA指定はマッチしない。次: どの改善をコード反映するか優先度確認→必要なら最小修正(ログ抑制/Donchian状態の互換処理/同一戦略の両建て抑止)。
+2025-12-13T21:50:53+09:00 改修: (1)ログ抑制: InpEnableVerboseLogs追加+ログをクールダウン抑制(バンド無効/スプレッド超過/両建て拒否)、(2)両建て: InpAllowOppositePositions=false時に同一戦略(magic)の逆方向保有を拒否、(3)Donchian: MID/ULTRAをWIDE扱いで互換マッチ、(4)スリッページ: InpSlippageInPips追加しOrderSend用ポイント換算を明示。READMEも追記。次: MT4でコンパイル→代表presetでBTしてTradeLog/挙動(スキップログ頻度・両建て拒否・DONCHIAN_STATEマッチ・slippage換算)を確認。
+2025-12-13T21:57:45+09:00 コンパイル実行: pwsh ./Scripts/compile_YoYoEA_Multi_Entry.ps1 を実行し成功(0 errors, 0 warnings)。EX4=/mnt/d/Rakuten_MT4/MQL4/Experts/YoYoEA_Multi_Entry.ex4, log=/home/anyo_/workspace/shared/Compile_log/YoYoEA_Multi_Entry_20251213_215409.log。BT準備: terminal.exe(/portable)起動、presets/*.set を /mnt/d/Rakuten_MT4/tester/ に配置、Config/v125_AtrBandConfig_YoYoEA_Multi_Entry_M15_MA*.csv を /mnt/d/Rakuten_MT4/MQL4/Files/ に配置。次: MT4 Strategy TesterでUSDJPY M15 + BETR_USDJPY_M15_ConfigOff_BE2_TrailOff_TP100.set(または目的preset)を読み込み→Start→生成されたTradeLog_<Profile>.csvをshared/analysisへ整理。
+2025-12-13T21:59:07+09:00 コミット準備: 変更を `MQL4/Experts/YoYoEA_Multi_Entry.mq4` `README.md` `Memo/memo.txt` の3ファイルに限定してステージし、v1.26改修をコミット予定。次: git commit実行→ハッシュ共有。
+2025-12-13T21:59:44+09:00 コミット実施: v1.26改修をコミット。対象: YoYoEA_Multi_Entry.mq4 / README.md / Memo/memo.txt。次: テスターBTでTradeLog出力を確認し、必要ならpresetにInpSlippageInPips/InpEnableVerboseLogsを追記。
