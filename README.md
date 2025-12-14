@@ -25,6 +25,7 @@ YoYoEA_Multi_Entry（旧 YoYoEntryTester）は複数ストラテジー（MA、RS
 - `InpLossStreakPause` に達した損失連続数で休止し、`InpLossPauseMinutes` が 0 の場合は再開条件を外部で整えるまで停止します。
 - 取引セッションはサーバー時間を基準とし、`InpSessionStartHour` ≤ 時刻 < `InpSessionEndHour` の間のみ発注します。金曜は `InpSessionSkipFriday = true` と `InpFridayCutoffHour` で早期停止が可能です。
 - ADX/Donchian フィルタを利用する場合は `InpUseAdxFilter` / `InpAdxPeriod` / `InpAdxTrendThreshold`、`InpUseDonchianFilter` / `InpDonchianPeriod` / `InpDonchianNarrowMax` / `InpDonchianMidMax` / `InpDonchianWideMax` を設定してください（しきい値は Narrow < Mid < Wide になるよう配置）。
+- CCI の売買方向はデフォルトで「トレンド（CCI が上限超えで買い／下限割れで売り）」です。逆張りにしたい場合は `InpCCIContrarian=true` を指定してください（上限超えで売り／下限割れで買い）。
 - ログが多い場合は `InpEnableVerboseLogs=false` のまま運用し、必要なときだけ true にしてください（CSV 読込の詳細などを追加で出力します）。
 
 ## ログファイル

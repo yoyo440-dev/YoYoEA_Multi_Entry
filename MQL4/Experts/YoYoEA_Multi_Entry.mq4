@@ -41,6 +41,7 @@ input double InpRSISellLevel    = 70.0;
 input int    InpCCIPeriod       = 14;
 input double InpCCIUpperLevel   = 100.0;
 input double InpCCILowerLevel   = -100.0;
+input bool   InpCCIContrarian   = false;
 
 input int    InpMACDFastEMA     = 12;
 input int    InpMACDSlowEMA     = 26;
@@ -1366,6 +1367,7 @@ void WriteParameterSnapshot(const string safeProfile)
    FileWrite(handle, "cci_period", IntegerToString(InpCCIPeriod));
    FileWrite(handle, "cci_upper_level", DoubleToString(InpCCIUpperLevel, 4));
    FileWrite(handle, "cci_lower_level", DoubleToString(InpCCILowerLevel, 4));
+   FileWrite(handle, "cci_contrarian", BoolToText(InpCCIContrarian));
    FileWrite(handle, "macd_fast_ema", IntegerToString(InpMACDFastEMA));
    FileWrite(handle, "macd_slow_ema", IntegerToString(InpMACDSlowEMA));
    FileWrite(handle, "macd_signal_sma", IntegerToString(InpMACDSignalSMA));
@@ -3068,10 +3070,10 @@ int EvaluateCCI(double &indicatorValue)
    indicatorValue = iCCI(NULL, 0, InpCCIPeriod, PRICE_TYPICAL, 1);
 
    if(indicatorValue > InpCCIUpperLevel)
-      return(1);
+      return(InpCCIContrarian ? -1 : 1);
 
    if(indicatorValue < InpCCILowerLevel)
-      return(-1);
+      return(InpCCIContrarian ? 1 : -1);
 
    return(0);
   }
