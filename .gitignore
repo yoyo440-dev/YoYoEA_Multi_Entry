@@ -15,3 +15,7 @@ MQL4/Indicators/
 
 # Logs
 shared/
+
+# Analysis artifacts (BT logs / notebooks)
+analysis/bt_results/Archive/
+analysis/notebooks/
