@@ -118,6 +118,7 @@ int           g_totalPositionCap     = 1;
 bool          g_multiPositionActive  = false;
 double        g_effectiveLots        = 0.0;
 datetime      g_lastBandDisabledLogTime = 0;
+datetime      g_lastBandConfigMissingLogTime = 0;
 datetime      g_lastSpreadSkipLogTime   = 0;
 datetime      g_lastOppositeSkipLogTime = 0;
 
@@ -3157,7 +3158,14 @@ void ProcessStrategy(StrategyIndex index,
                                             currentAdxState,
                                             currentDonchianState,
                                             bandSetting);
-   bool configRequired = (g_bandConfigLoaded && (InpUseAtrBandConfig || InpUseAdxFilter || InpUseDonchianFilter));
+   bool configRequired = (InpUseAtrBandConfig || InpUseAdxFilter || InpUseDonchianFilter);
+   if(configRequired && !g_bandConfigLoaded)
+     {
+      if(InpEnableVerboseLogs || ShouldLogWithCooldown(g_lastBandConfigMissingLogTime, 300))
+         PrintFormat("ATR band config '%s' is required but not loaded. Entry evaluation skipped.", g_bandConfigPath);
+      return;
+     }
+
    if(!hasBandSetting && configRequired)
       return;
 
@@ -4014,14 +4022,21 @@ int OnInit()
     }
   else
     {
+     bool configRequired = (InpUseAtrBandConfig || InpUseAdxFilter || InpUseDonchianFilter);
+     if(configRequired)
+       {
+        PrintFormat("ATR band config '%s' could not be loaded but is required (InpUseAtrBandConfig=%s InpUseAdxFilter=%s InpUseDonchianFilter=%s). EA disabled.",
+                    g_bandConfigPath,
+                    BoolToText(InpUseAtrBandConfig),
+                    BoolToText(InpUseAdxFilter),
+                    BoolToText(InpUseDonchianFilter));
+        return(INIT_FAILED);
+       }
+
      if(InpUseAtrBandConfig)
-       {
-        PrintFormat("ATR band config '%s' could not be loaded. Continuing with global inputs; ADX/Donchian filters will not switch band settings.", g_bandConfigPath);
-       }
+        PrintFormat("ATR band config '%s' could not be loaded. Continuing with global inputs.", g_bandConfigPath);
      else
-       {
         Print("ATR band config disabled via input parameter.");
-       }
     }
 
    EnsureResultLogHeader();
