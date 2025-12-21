@@ -588,7 +588,8 @@ bool HasOppositeStrategyPosition(StrategyIndex currentIndex,
   }
 
 //+------------------------------------------------------------------+
-//| Utility: check for opposite open positions within same strategy   |
+//| Utility: check for opposite open positions within same strategy  |
+//| (legacy magic compatible)                                        |
 //+------------------------------------------------------------------+
 bool HasOppositePositionForMagic(const int magic,
                                  const int direction)
@@ -597,6 +598,7 @@ bool HasOppositePositionForMagic(const int magic,
       return(false);
 
    int oppositeType = (direction > 0 ? OP_SELL : OP_BUY);
+   int targetStrategyIndex = FindStrategyIndexByMagic(magic);
 
    for(int i = OrdersTotal() - 1; i >= 0; i--)
      {
@@ -610,8 +612,17 @@ bool HasOppositePositionForMagic(const int magic,
       if(orderType != OP_BUY && orderType != OP_SELL)
          continue;
 
-      if(OrderMagicNumber() != magic)
-         continue;
+      if(targetStrategyIndex >= 0)
+        {
+         int orderStrategyIndex = FindStrategyIndexByMagic(OrderMagicNumber());
+         if(orderStrategyIndex != targetStrategyIndex)
+            continue;
+        }
+      else
+        {
+         if(OrderMagicNumber() != magic)
+            continue;
+        }
 
       if(orderType == oppositeType)
          return(true);
@@ -622,10 +633,12 @@ bool HasOppositePositionForMagic(const int magic,
 
 //+------------------------------------------------------------------+
 //| Utility: count open positions for a given magic number           |
+//| (legacy magic compatible)                                        |
 //+------------------------------------------------------------------+
 int CountOpenPositionsForMagic(const int magic)
   {
    int count = 0;
+   int targetStrategyIndex = FindStrategyIndexByMagic(magic);
    for(int i = OrdersTotal() - 1; i >= 0; i--)
      {
       if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
@@ -635,8 +648,17 @@ int CountOpenPositionsForMagic(const int magic)
       int orderType = OrderType();
       if(orderType != OP_BUY && orderType != OP_SELL)
          continue;
-      if(OrderMagicNumber() == magic)
-         count++;
+      if(targetStrategyIndex >= 0)
+        {
+         int orderStrategyIndex = FindStrategyIndexByMagic(OrderMagicNumber());
+         if(orderStrategyIndex == targetStrategyIndex)
+            count++;
+        }
+      else
+        {
+         if(OrderMagicNumber() == magic)
+            count++;
+        }
      }
    return(count);
   }
@@ -756,13 +778,26 @@ void RefreshLossPause(StrategyState &state)
 //+------------------------------------------------------------------+
 bool HasOpenPosition(const StrategyState &state)
   {
+   int targetStrategyIndex = FindStrategyIndexByMagic(state.magic);
    for(int i = OrdersTotal() - 1; i >= 0; i--)
      {
       if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
          continue;
 
-      if(OrderSymbol() == Symbol() && OrderMagicNumber() == state.magic)
-         return(true);
+      if(OrderSymbol() != Symbol())
+         continue;
+
+      if(targetStrategyIndex >= 0)
+        {
+         int orderStrategyIndex = FindStrategyIndexByMagic(OrderMagicNumber());
+         if(orderStrategyIndex == targetStrategyIndex)
+            return(true);
+        }
+      else
+        {
+         if(OrderMagicNumber() == state.magic)
+            return(true);
+        }
      }
    return(false);
   }
@@ -1973,9 +2008,12 @@ bool LoadAtrBandConfig(const string safeProfile)
       if(!hasMax || maxAtrValue <= minAtrValue)
          maxAtrValue = DBL_MAX;
 
-      PrintFormat("Band row parsed: rawMin='%s' rawMax='%s'",
-                  columns[0],
-                  (columnCount > 1 ? columns[1] : ""));
+      if(InpEnableVerboseLogs)
+        {
+         PrintFormat("Band row parsed: rawMin='%s' rawMax='%s'",
+                     columns[0],
+                     (columnCount > 1 ? columns[1] : ""));
+        }
 
       BandConfig tempConfig;
       InitBandConfig(tempConfig);
@@ -3795,6 +3833,13 @@ int OnInit()
         }
      }
 
+   if((InpUseAdxFilter || InpUseDonchianFilter) && !InpUseAtrBandConfig)
+     {
+      Print("設定エラー: ADX/DONフィルタが有効ですが、InpUseAtrBandConfig=false です。");
+      Print("InpUseAtrBandConfig=true にし、InpAtrBandConfigFile を指定（未指定なら AtrBandConfig_<Profile>.csv を使用）してください。");
+      return(INIT_PARAMETERS_INCORRECT);
+     }
+
    if(InpFastMAPeriod <= 0 || InpSlowMAPeriod <= 0)
      {
       Print("MA periods must be greater than zero.");
@@ -4017,7 +4062,8 @@ int OnInit()
   bool configLoaded = LoadAtrBandConfig(safeProfile);
   if(configLoaded)
     {
-     LogBandConfigurations();
+     if(InpEnableVerboseLogs)
+        LogBandConfigurations();
      AppendBandConfigSnapshot();
     }
   else
@@ -4053,9 +4099,9 @@ void OnTick()
   {
    UpdateDynamicPositionControls();
 
-   double atrValue = iATR(NULL, 0, InpATRPeriod, 1);
+   double atrValue = (Bars > 1 ? iATR(NULL, 0, InpATRPeriod, 1) : 0.0);
 
-   if(Bars >= 200)
+   if(Bars >= 3)
      {
       double adxValue = (InpUseAdxFilter ? iADX(NULL, 0, InpAdxPeriod, PRICE_CLOSE, MODE_MAIN, 1) : EMPTY_VALUE);
       double donchianWidth = (InpUseDonchianFilter ? CalculateDonchianWidth(InpDonchianPeriod) : EMPTY_VALUE);
