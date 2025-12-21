@@ -498,3 +498,4 @@
 2025-12-21T11:25:34+09:00 改修(A案)実装: ADX/DONフィルタ有効時はBandConfig必須とし、`InpUseAtrBandConfig=false` の誤設定を `OnInit()` で `INIT_PARAMETERS_INCORRECT` 返却に変更して早期に気付けるようにした。影響: フィルタONなのにBandConfig未使用の起動が不可に(誤BT防止)。次アクション: Legacy magic互換をポジション制御へ拡張するか検討(必要なら対応)。
 2025-12-21T11:31:33+09:00 追加改修: ①Legacy magic互換をポジション制御へ反映(同一戦略判定を FindStrategyIndexByMagic 基準にし、CountOpenPositions/反対玉/保有判定が旧magicでも効くように修正)、②OnTickの Bars>=200 固定ゲートを Bars>=3 に緩和してMA無効時でも他戦略が待たないよう改善、③BandConfigロード時のデバッグPrintをverbose時のみ＆全設定ダンプ(LogBandConfigurations)もverbose時のみへ整理。次アクション: MT4で既存preset(v131等)を軽く起動確認し、Legacy玉がある状態で上限/反対玉制御が意図通りか確認。
 2025-12-21T11:32:50+09:00 コミット作業: 上記改修一式をリポジトリへコミット。結果: git履歴へ反映。次アクション: MT4でv131 preset起動→旧magic玉あり/なしでエントリー抑止(同戦略上限/反対玉)を確認。
+2025-12-21T11:37:13+09:00 push完了: コミット(f521edd)を origin/main へpush。結果: mainがf521edd。次アクション: MT4でv131 preset起動→旧magic玉あり/なしでエントリー抑止(同戦略上限/反対玉)を確認。
