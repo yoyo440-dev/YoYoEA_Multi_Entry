@@ -123,6 +123,7 @@ datetime      g_lastBandDisabledLogTime = 0;
 datetime      g_lastBandConfigMissingLogTime = 0;
 datetime      g_lastSpreadSkipLogTime   = 0;
 datetime      g_lastOppositeSkipLogTime = 0;
+datetime      g_lastClosedOrderCheckBarTime = 0;
 
 #define RESULT_LOG_COLUMNS 21
 
@@ -3173,6 +3174,10 @@ int EvaluateMACD(double &indicatorValue)
    double macdPrevSig  = iMACD(NULL, 0, InpMACDFastEMA, InpMACDSlowEMA, InpMACDSignalSMA, PRICE_CLOSE, MODE_SIGNAL, 2);
    double macdCurrSig  = iMACD(NULL, 0, InpMACDFastEMA, InpMACDSlowEMA, InpMACDSignalSMA, PRICE_CLOSE, MODE_SIGNAL, 1);
 
+   if(macdPrevMain == EMPTY_VALUE || macdCurrMain == EMPTY_VALUE ||
+      macdPrevSig  == EMPTY_VALUE || macdCurrSig  == EMPTY_VALUE)
+      return(0);
+
    indicatorValue = macdCurrMain;
 
    if(macdPrevMain <= macdPrevSig && macdCurrMain > macdCurrSig)
@@ -4165,7 +4170,11 @@ void OnTick()
 
    ManageOpenPositions(atrValue);
 
-   CheckClosedOrders();
+   if(Bars > 0 && Time[0] != g_lastClosedOrderCheckBarTime)
+     {
+      g_lastClosedOrderCheckBarTime = Time[0];
+      CheckClosedOrders();
+     }
   }
 
 //+------------------------------------------------------------------+
