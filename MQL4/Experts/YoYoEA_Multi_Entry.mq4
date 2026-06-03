@@ -37,6 +37,7 @@ input int    InpSlowMAPeriod    = 200;
 input int    InpRSIPeriod       = 14;
 input double InpRSIBuyLevel     = 30.0;
 input double InpRSISellLevel    = 70.0;
+input bool   InpRSIContrarian   = false;
 
 input int    InpCCIPeriod       = 14;
 input double InpCCIUpperLevel   = 100.0;
@@ -52,6 +53,7 @@ input int    InpStochDPeriod    = 3;
 input int    InpStochSlowing    = 3;
 input double InpStochBuyLevel   = 20.0;
 input double InpStochSellLevel  = 80.0;
+input bool   InpStochContrarian = false;
 
 input double InpATRStopMultiplier      = 3.0;
 input double InpATRTakeProfitMultiplier = 2.0;
@@ -1400,6 +1402,7 @@ void WriteParameterSnapshot(const string safeProfile)
    FileWrite(handle, "rsi_period", IntegerToString(InpRSIPeriod));
    FileWrite(handle, "rsi_buy_level", DoubleToString(InpRSIBuyLevel, 4));
    FileWrite(handle, "rsi_sell_level", DoubleToString(InpRSISellLevel, 4));
+   FileWrite(handle, "rsi_contrarian", BoolToText(InpRSIContrarian));
    FileWrite(handle, "cci_period", IntegerToString(InpCCIPeriod));
    FileWrite(handle, "cci_upper_level", DoubleToString(InpCCIUpperLevel, 4));
    FileWrite(handle, "cci_lower_level", DoubleToString(InpCCILowerLevel, 4));
@@ -1412,6 +1415,7 @@ void WriteParameterSnapshot(const string safeProfile)
    FileWrite(handle, "stoch_slowing", IntegerToString(InpStochSlowing));
    FileWrite(handle, "stoch_buy_level", DoubleToString(InpStochBuyLevel, 4));
    FileWrite(handle, "stoch_sell_level", DoubleToString(InpStochSellLevel, 4));
+   FileWrite(handle, "stoch_contrarian", BoolToText(InpStochContrarian));
    FileWrite(handle, "atr_stop_multiplier", DoubleToString(InpATRStopMultiplier, 4));
    FileWrite(handle,
              "atr_takeprofit_multiplier",
@@ -1578,6 +1582,10 @@ void LogInputParameters(const string safeProfile)
                BoolToText(InpEnableCCI),
                BoolToText(InpEnableMACD),
                BoolToText(InpEnableStoch));
+   PrintFormat("Strategy direction: RSI contrarian=%s CCI contrarian=%s STOCH contrarian=%s",
+               BoolToText(InpRSIContrarian),
+               BoolToText(InpCCIContrarian),
+               BoolToText(InpStochContrarian));
    PrintFormat("ATR settings: period=%d useATRStops=%s stopMult=%.4f takeMult=%.4f",
                InpATRPeriod,
                BoolToText(InpUseATRStops),
@@ -3097,11 +3105,21 @@ int EvaluateRSI(double &indicatorValue)
    indicatorValue = iRSI(NULL, 0, InpRSIPeriod, PRICE_CLOSE, 1);
    if(indicatorValue == EMPTY_VALUE)
       return(0);
-   if(indicatorValue < InpRSIBuyLevel)
-      return(1);
 
-   if(indicatorValue > InpRSISellLevel)
-      return(-1);
+   if(InpRSIContrarian)
+     {
+      if(indicatorValue < InpRSIBuyLevel)
+         return(1);
+      if(indicatorValue > InpRSISellLevel)
+         return(-1);
+     }
+   else
+     {
+      if(indicatorValue > InpRSISellLevel)
+         return(1);
+      if(indicatorValue < InpRSIBuyLevel)
+         return(-1);
+     }
 
    return(0);
   }
@@ -3167,11 +3185,20 @@ int EvaluateStochastic(double &indicatorValue)
 
    indicatorValue = kCurr;
 
-   if(kPrev <= dPrev && kCurr > dCurr && kCurr < InpStochBuyLevel && dCurr < InpStochBuyLevel)
-      return(1);
-
-   if(kPrev >= dPrev && kCurr < dCurr && kCurr > InpStochSellLevel && dCurr > InpStochSellLevel)
-      return(-1);
+   if(InpStochContrarian)
+     {
+      if(kPrev <= dPrev && kCurr > dCurr && kCurr < InpStochBuyLevel && dCurr < InpStochBuyLevel)
+         return(1);
+      if(kPrev >= dPrev && kCurr < dCurr && kCurr > InpStochSellLevel && dCurr > InpStochSellLevel)
+         return(-1);
+     }
+   else
+     {
+      if(kPrev <= dPrev && kCurr > dCurr && kCurr > InpStochSellLevel && dCurr > InpStochSellLevel)
+         return(1);
+      if(kPrev >= dPrev && kCurr < dCurr && kCurr < InpStochBuyLevel && dCurr < InpStochBuyLevel)
+         return(-1);
+     }
 
    return(0);
   }
