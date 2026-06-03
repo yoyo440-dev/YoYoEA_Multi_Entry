@@ -2005,8 +2005,14 @@ bool LoadAtrBandConfig(const string safeProfile)
             hasMax = true;
            }
         }
-      if(!hasMax || maxAtrValue <= minAtrValue)
+      if(!hasMax)
          maxAtrValue = DBL_MAX;
+      else if(maxAtrValue <= minAtrValue)
+        {
+         PrintFormat("Skipping ATR band row due to MAXATR (%.6f) <= MINATR (%.6f). Line='%s'",
+                     maxAtrValue, minAtrValue, rawLine);
+         continue;
+        }
 
       if(InpEnableVerboseLogs)
         {
@@ -3089,6 +3095,8 @@ int EvaluateRSI(double &indicatorValue)
       return(0);
 
    indicatorValue = iRSI(NULL, 0, InpRSIPeriod, PRICE_CLOSE, 1);
+   if(indicatorValue == EMPTY_VALUE)
+      return(0);
    if(indicatorValue < InpRSIBuyLevel)
       return(1);
 
@@ -3107,6 +3115,8 @@ int EvaluateCCI(double &indicatorValue)
       return(0);
 
    indicatorValue = iCCI(NULL, 0, InpCCIPeriod, PRICE_TYPICAL, 1);
+   if(indicatorValue == EMPTY_VALUE)
+      return(0);
 
    if(indicatorValue > InpCCIUpperLevel)
       return(InpCCIContrarian ? -1 : 1);
@@ -3146,7 +3156,7 @@ int EvaluateMACD(double &indicatorValue)
 //+------------------------------------------------------------------+
 int EvaluateStochastic(double &indicatorValue)
   {
-   int requiredBars = MathMax(InpStochKPeriod, MathMax(InpStochDPeriod, InpStochSlowing)) + 2;
+   int requiredBars = InpStochKPeriod + InpStochSlowing + InpStochDPeriod + 2;
    if(Bars < requiredBars)
       return(0);
 
@@ -3393,11 +3403,7 @@ void CheckClosedOrders()
          continue;
 
       if(IsExitLogged(ticket, closeTime))
-        {
-         if(closeTime < g_lastLoggedExitTime)
-            break;
          continue;
-        }
 
       int direction = 0;
       if(OrderType() == OP_BUY)
