@@ -3115,9 +3115,12 @@ int EvaluateRSI(double &indicatorValue)
      }
    else
      {
-      if(indicatorValue > InpRSISellLevel)
+      double rsiPrev = iRSI(NULL, 0, InpRSIPeriod, PRICE_CLOSE, 2);
+      if(rsiPrev == EMPTY_VALUE)
+         return(0);
+      if(rsiPrev <= InpRSISellLevel && indicatorValue > InpRSISellLevel)
          return(1);
-      if(indicatorValue < InpRSIBuyLevel)
+      if(rsiPrev >= InpRSIBuyLevel && indicatorValue < InpRSIBuyLevel)
          return(-1);
      }
 
@@ -3136,11 +3139,23 @@ int EvaluateCCI(double &indicatorValue)
    if(indicatorValue == EMPTY_VALUE)
       return(0);
 
-   if(indicatorValue > InpCCIUpperLevel)
-      return(InpCCIContrarian ? -1 : 1);
-
-   if(indicatorValue < InpCCILowerLevel)
-      return(InpCCIContrarian ? 1 : -1);
+   if(InpCCIContrarian)
+     {
+      if(indicatorValue > InpCCIUpperLevel)
+         return(-1);
+      if(indicatorValue < InpCCILowerLevel)
+         return(1);
+     }
+   else
+     {
+      double cciPrev = iCCI(NULL, 0, InpCCIPeriod, PRICE_TYPICAL, 2);
+      if(cciPrev == EMPTY_VALUE)
+         return(0);
+      if(cciPrev <= InpCCIUpperLevel && indicatorValue > InpCCIUpperLevel)
+         return(1);
+      if(cciPrev >= InpCCILowerLevel && indicatorValue < InpCCILowerLevel)
+         return(-1);
+     }
 
    return(0);
   }
@@ -3194,9 +3209,9 @@ int EvaluateStochastic(double &indicatorValue)
      }
    else
      {
-      if(kPrev <= dPrev && kCurr > dCurr && kCurr > InpStochSellLevel && dCurr > InpStochSellLevel)
+      if(kPrev <= dPrev && kCurr > dCurr && kCurr > 50.0 && dCurr > 50.0)
          return(1);
-      if(kPrev >= dPrev && kCurr < dCurr && kCurr < InpStochBuyLevel && dCurr < InpStochBuyLevel)
+      if(kPrev >= dPrev && kCurr < dCurr && kCurr < 50.0 && dCurr < 50.0)
          return(-1);
      }
 
